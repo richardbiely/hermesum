@@ -71,6 +71,21 @@ Important behavior:
 - It installs dependencies if needed and serves the built output from `web/.output/public`.
 - If you change frontend files while `run-local.sh` is already running, those changes will not appear until you rebuild and restart.
 
+### 3. Backend watch mode for Python changes
+
+Use this when you are editing Python files and want Hermes to restart automatically:
+
+```bash
+./run-local.sh --watch
+```
+
+Important behavior:
+
+- This watches Python files in `backend/` and in the upstream Hermes checkout from `HERMES_AGENT_SOURCE` or `$HOME/.hermes/hermes-agent`.
+- When a watched `.py` file changes, the Hermes dashboard process is restarted automatically.
+- This is an autorestart loop, not hot module replacement. Existing in-memory session state is lost on each restart.
+- Frontend files are still static in this mode. For live frontend refresh, keep using `pnpm dev` in `web/`.
+
 If you need to refresh the static build manually:
 
 ```bash
@@ -87,7 +102,8 @@ For normal UI development:
 1. Run `pnpm dev` inside `web/`.
 2. Keep that process running while editing.
 3. Open `http://127.0.0.1:3019/`.
-4. Use `./run-local.sh` only when you specifically need to verify the Hermes-served static integration.
+4. Use `./run-local.sh --watch` when you are iterating on Python backend changes.
+5. Use `./run-local.sh` only when you specifically need to verify the Hermes-served static integration without the watcher.
 
 ## Verification run
 

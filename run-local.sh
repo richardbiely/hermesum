@@ -7,6 +7,39 @@ RUNTIME="$ROOT/.runtime/hermes-agent"
 WEB="$ROOT/web"
 PORT="${PORT:-9119}"
 PYTHON="$UPSTREAM/venv/bin/python"
+WATCH=0
+WATCH_INTERVAL="${WATCH_INTERVAL:-1}"
+
+usage() {
+  cat <<EOF
+Usage: ./run-local.sh [--watch]
+
+Options:
+  --watch    Restart the Hermes dashboard when watched Python files change.
+
+Environment:
+  HERMES_AGENT_SOURCE  Path to the upstream Hermes checkout.
+  PORT                 Dashboard port. Default: 9119.
+  WATCH_INTERVAL       Poll interval in seconds in watch mode. Default: 1.
+EOF
+}
+
+for arg in "$@"; do
+  case "$arg" in
+    --watch)
+      WATCH=1
+      ;;
+    -h|--help)
+      usage
+      exit 0
+      ;;
+    *)
+      echo "Unknown argument: $arg" >&2
+      usage >&2
+      exit 1
+      ;;
+  esac
+done
 
 if [[ ! -x "$PYTHON" ]]; then
   echo "Missing Hermes venv python: $PYTHON" >&2
@@ -18,20 +51,21 @@ if [[ ! -f "$UPSTREAM/hermes_cli/web_server.py" ]]; then
   exit 1
 fi
 
-echo "Preparing disposable Hermes runtime copy under: $RUNTIME"
-mkdir -p "$ROOT/.runtime"
-rsync -a --delete \
-  --exclude '.git' \
-  --exclude '.mypy_cache' \
-  --exclude '.pytest_cache' \
-  --exclude '__pycache__' \
-  "$UPSTREAM/" "$RUNTIME/"
+prepare_runtime() {
+  echo "Preparing disposable Hermes runtime copy under: $RUNTIME"
+  mkdir -p "$ROOT/.runtime"
+  rsync -a --delete \
+    --exclude '.git' \
+    --exclude '.mypy_cache' \
+    --exclude '.pytest_cache' \
+    --exclude '__pycache__' \
+    "$UPSTREAM/" "$RUNTIME/"
 
-cp "$ROOT/backend/hermes_cli/web_chat.py" "$RUNTIME/hermes_cli/web_chat.py"
-mkdir -p "$RUNTIME/tests/hermes_cli"
-cp "$ROOT/backend/tests/hermes_cli/test_web_chat.py" "$RUNTIME/tests/hermes_cli/test_web_chat.py"
+  cp "$ROOT/backend/hermes_cli/web_chat.py" "$RUNTIME/hermes_cli/web_chat.py"
+  mkdir -p "$RUNTIME/tests/hermes_cli"
+  cp "$ROOT/backend/tests/hermes_cli/test_web_chat.py" "$RUNTIME/tests/hermes_cli/test_web_chat.py"
 
-RUNTIME_WEB_SERVER="$RUNTIME/hermes_cli/web_server.py" RUNTIME_HERMES_STATE="$RUNTIME/hermes_state.py" "$PYTHON" - <<'PY'
+  RUNTIME_WEB_SERVER="$RUNTIME/hermes_cli/web_server.py" RUNTIME_HERMES_STATE="$RUNTIME/hermes_state.py" "$PYTHON" - <<'PY'
 from pathlib import Path
 import os
 
@@ -112,22 +146,123 @@ if "def update_session_model_settings(" not in state_text:
 
 state_path.write_text(state_text)
 PY
+}
 
-if [[ ! -d "$WEB/node_modules" ]]; then
-  echo "Installing Nuxt dependencies..."
-  (cd "$WEB" && pnpm install --frozen-lockfile)
+ensure_web_build() {
+  if [[ ! -d "$WEB/node_modules" ]]; then
+    echo "Installing Nuxt dependencies..."
+    (cd "$WEB" && pnpm install --frozen-lockfile)
+  fi
+
+  if [[ ! -d "$WEB/.output/public" ]]; then
+    echo "Building Nuxt static app..."
+    (cd "$WEB" && pnpm build)
+  fi
+
+  # Hermes' current SPA mount expects /assets to exist. Nuxt static output mainly uses /_nuxt.
+  mkdir -p "$WEB/.output/public/assets"
+}
+
+watch_signature() {
+  ROOT="$ROOT" UPSTREAM="$UPSTREAM" "$PYTHON" - <<'PY'
+from __future__ import annotations
+
+import hashlib
+import os
+from pathlib import Path
+
+root = Path(os.environ["ROOT"])
+upstream = Path(os.environ["UPSTREAM"])
+
+watch_roots = [
+    root / "backend",
+    upstream,
+]
+skip_dirs = {".git", ".mypy_cache", ".pytest_cache", "__pycache__", "venv", "node_modules"}
+items: list[str] = []
+
+for base in watch_roots:
+    if not base.exists():
+        continue
+    for path in sorted(base.rglob("*.py")):
+        if any(part in skip_dirs for part in path.parts):
+            continue
+        stat = path.stat()
+        items.append(f"{path}:{stat.st_mtime_ns}:{stat.st_size}")
+
+print(hashlib.sha256("\n".join(items).encode()).hexdigest())
+PY
+}
+
+CHILD_PID=""
+
+start_dashboard() {
+  echo "Starting Hermes dashboard with Nuxt prototype on http://127.0.0.1:$PORT"
+  echo "Runtime copy: $RUNTIME"
+  echo "Source checkout is only read/copied, not modified: $UPSTREAM"
+  (
+    cd "$RUNTIME"
+    HERMES_WEB_DIST="$WEB/.output/public" "$PYTHON" -m hermes_cli.main dashboard --port "$PORT"
+  ) &
+  CHILD_PID=$!
+}
+
+stop_dashboard() {
+  if [[ -n "${CHILD_PID:-}" ]] && kill -0 "$CHILD_PID" 2>/dev/null; then
+    kill "$CHILD_PID" 2>/dev/null || true
+    wait "$CHILD_PID" 2>/dev/null || true
+  fi
+  CHILD_PID=""
+}
+
+cleanup() {
+  stop_dashboard
+}
+
+run_once() {
+  prepare_runtime
+  ensure_web_build
+  echo "Starting Hermes dashboard with Nuxt prototype on http://127.0.0.1:$PORT"
+  echo "Runtime copy: $RUNTIME"
+  echo "Source checkout is only read/copied, not modified: $UPSTREAM"
+  cd "$RUNTIME"
+  HERMES_WEB_DIST="$WEB/.output/public" "$PYTHON" -m hermes_cli.main dashboard --port "$PORT"
+}
+
+run_watch() {
+  trap cleanup EXIT INT TERM
+
+  prepare_runtime
+  ensure_web_build
+  local current_sig
+  current_sig="$(watch_signature)"
+  start_dashboard
+
+  while true; do
+    sleep "$WATCH_INTERVAL"
+
+    if [[ -n "${CHILD_PID:-}" ]] && ! kill -0 "$CHILD_PID" 2>/dev/null; then
+      echo "Dashboard process exited; restarting..."
+      prepare_runtime
+      start_dashboard
+      current_sig="$(watch_signature)"
+      continue
+    fi
+
+    local next_sig
+    next_sig="$(watch_signature)"
+    if [[ "$next_sig" != "$current_sig" ]]; then
+      echo "Detected Python change, restarting Hermes dashboard..."
+      stop_dashboard
+      prepare_runtime
+      start_dashboard
+      current_sig="$next_sig"
+    fi
+  done
+}
+
+if [[ "$WATCH" == "1" ]]; then
+  run_watch
+else
+  run_once
 fi
-
-if [[ ! -d "$WEB/.output/public" ]]; then
-  echo "Building Nuxt static app..."
-  (cd "$WEB" && pnpm build)
-fi
-
-# Hermes' current SPA mount expects /assets to exist. Nuxt static output mainly uses /_nuxt.
-mkdir -p "$WEB/.output/public/assets"
-
-echo "Starting Hermes dashboard with Nuxt prototype on http://127.0.0.1:$PORT"
-echo "Runtime copy: $RUNTIME"
-echo "Source checkout is only read/copied, not modified: $UPSTREAM"
-cd "$RUNTIME"
-HERMES_WEB_DIST="$WEB/.output/public" "$PYTHON" -m hermes_cli.main dashboard --port "$PORT"
