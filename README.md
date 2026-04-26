@@ -2,7 +2,7 @@
 
 This directory contains the project-local prototype for a native Nuxt UI chat interface for Hermes Agent.
 
-Do **not** edit `$HOME/.hermes/hermes-agent` directly during prototype work. Backend integration is exported as patch files under `backend/patches/`.
+Do **not** edit `$HOME/.hermes/hermes-agent` directly during prototype work. Treat this repository as the source of truth and move changes with normal git workflow.
 
 ## Layout
 
@@ -10,9 +10,6 @@ Do **not** edit `$HOME/.hermes/hermes-agent` directly during prototype work. Bac
 backend/
   hermes_cli/web_chat.py                    # proposed FastAPI router
   tests/hermes_cli/test_web_chat.py         # proposed pytest coverage
-  patches/hermes_cli-web_server.patch       # router wiring patch only
-  patches/backend-web-chat-files.patch      # file additions patch
-  patches/backend-web-chat-combined.patch   # file additions + web_server wiring
 web/                                        # Nuxt UI prototype
 ```
 
@@ -25,7 +22,7 @@ web/                                        # Nuxt UI prototype
 - `GET /api/web-chat/runs/{run_id}/events` via SSE
 - `POST /api/web-chat/runs/{run_id}/stop`
 
-The run executor is intentionally injectable. The current default emits a placeholder assistant response; wiring to the real `AIAgent` should happen only after explicit approval to apply patches to the real Hermes repo or in a disposable worktree.
+The run executor is intentionally injectable. The current default emits a placeholder assistant response; wiring to the real `AIAgent` should happen only after explicit approval to integrate these changes into the real Hermes repo or in a disposable worktree.
 
 ## Implemented Nuxt prototype
 

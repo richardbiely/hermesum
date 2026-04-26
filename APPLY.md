@@ -1,4 +1,4 @@
-# Applying the Prototype to Hermes Agent Later
+# Integrating with Hermes Agent Later
 
 This prototype intentionally lives outside the real Hermes Agent checkout.
 
@@ -8,24 +8,28 @@ This prototype intentionally lives outside the real Hermes Agent checkout.
 $PROJECT_ROOT
 ```
 
-## Safety check before applying anything
+## Safety check before integrating anything
 
 ```bash
 git -C "$HOME/.hermes/hermes-agent" status --short
 ```
 
-Do not apply patches if unrelated local work is present unless it is explicitly accounted for.
+Do not integrate changes if unrelated local work is present unless it is explicitly accounted for.
 
-## Backend patch application
+## Integration approach
 
-From the real Hermes repo, after explicit approval:
+Use normal git workflow rather than exported `.patch` files:
 
 ```bash
-PROJECT_ROOT="$(pwd)"
-cd "$HOME/.hermes/hermes-agent"
-git apply "$PROJECT_ROOT/backend/patches/backend-web-chat-combined.patch"
-venv/bin/python -m pytest tests/hermes_cli/test_web_chat.py -q
+git -C "$PROJECT_ROOT" status --short
+git -C "$HOME/.hermes/hermes-agent" status --short
 ```
+
+Recommended flow:
+
+1. Keep this repository as the working source of truth.
+2. When the backend/frontend changes are accepted, move them into the real Hermes repo through a branch, commits, and a normal review/merge flow.
+3. Run the relevant backend tests in the real Hermes repo after the changes land there.
 
 ## Frontend copy/application
 
@@ -35,7 +39,7 @@ The Nuxt prototype is currently a standalone folder:
 web/
 ```
 
-A later integration patch should decide whether Hermes should:
+A later integration step should decide whether Hermes should:
 
 1. add this as `web/`, or
 2. replace the existing `web/` only after parity is accepted.
@@ -45,7 +49,7 @@ Recommended next step: keep both and serve Nuxt via an explicit `HERMES_WEB_DIST
 ## Verified commands in project-local prototype
 
 ```bash
-# backend patch test, run in temporary clone
+# backend test, run in temporary clone
 6 passed in 1.12s
 
 # frontend
