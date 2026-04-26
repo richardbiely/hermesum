@@ -313,7 +313,7 @@ kill_existing_port_processes() {
   fi
 
   local pids
-  pids="$(lsof -ti tcp:"$target_port" 2>/dev/null || true)"
+  pids="$(lsof -tiTCP:"$target_port" -sTCP:LISTEN 2>/dev/null || true)"
   if [[ -z "$pids" ]]; then
     return
   fi
@@ -389,6 +389,7 @@ run_watch() {
     if [[ "$next_sig" != "$current_sig" ]]; then
       echo "Detected Python change, restarting Hermes dashboard..."
       stop_dashboard
+      kill_existing_port_processes "$PORT"
       prepare_runtime
       ensure_web_build
       start_dashboard
@@ -439,6 +440,7 @@ run_dev() {
     if [[ "$next_sig" != "$current_sig" ]]; then
       echo "Detected Python change, restarting Hermes dashboard backend..."
       stop_dashboard
+      kill_existing_port_processes "$PORT"
       prepare_runtime
       start_dashboard
       current_sig="$next_sig"
