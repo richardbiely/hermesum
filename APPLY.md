@@ -5,13 +5,13 @@ This prototype intentionally lives outside the real Hermes Agent checkout.
 ## Current source of truth
 
 ```text
-/Users/pavolbiely/Sites/hermesum/.hermes/implementation/hermes-agent-nuxt-chat
+$PROJECT_ROOT
 ```
 
 ## Safety check before applying anything
 
 ```bash
-git -C /Users/pavolbiely/.hermes/hermes-agent status --short
+git -C "$HOME/.hermes/hermes-agent" status --short
 ```
 
 Do not apply patches if unrelated local work is present unless it is explicitly accounted for.
@@ -21,8 +21,9 @@ Do not apply patches if unrelated local work is present unless it is explicitly 
 From the real Hermes repo, after explicit approval:
 
 ```bash
-cd /Users/pavolbiely/.hermes/hermes-agent
-git apply /Users/pavolbiely/Sites/hermesum/.hermes/implementation/hermes-agent-nuxt-chat/backend/patches/backend-web-chat-combined.patch
+PROJECT_ROOT="$(pwd)"
+cd "$HOME/.hermes/hermes-agent"
+git apply "$PROJECT_ROOT/backend/patches/backend-web-chat-combined.patch"
 venv/bin/python -m pytest tests/hermes_cli/test_web_chat.py -q
 ```
 

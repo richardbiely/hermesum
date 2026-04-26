@@ -2,7 +2,7 @@
 
 This directory contains the project-local prototype for a native Nuxt UI chat interface for Hermes Agent.
 
-Do **not** edit `/Users/pavolbiely/.hermes/hermes-agent` directly during prototype work. Backend integration is exported as patch files under `backend/patches/`.
+Do **not** edit `$HOME/.hermes/hermes-agent` directly during prototype work. Backend integration is exported as patch files under `backend/patches/`.
 
 ## Layout
 
@@ -91,7 +91,7 @@ For normal UI development:
 
 ## Verification run
 
-Backend verified by applying the prototype into a temporary local clone of `/Users/pavolbiely/.hermes/hermes-agent`, using the real Hermes venv, and deleting the temporary clone afterwards:
+Backend verified by applying the prototype into a temporary local clone of `$HOME/.hermes/hermes-agent`, using the real Hermes venv, and deleting the temporary clone afterwards:
 
 ```bash
 6 passed in 1.12s
@@ -110,7 +110,7 @@ pnpm build
 Real Hermes repo cleanliness check after verification:
 
 ```bash
-git -C /Users/pavolbiely/.hermes/hermes-agent status --short
+git -C "$HOME/.hermes/hermes-agent" status --short
 # M web/package-lock.json
 ```
 

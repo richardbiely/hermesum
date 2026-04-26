@@ -1,8 +1,8 @@
-diff --git a/Users/pavolbiely/Sites/hermesum/.hermes/implementation/hermes-agent-nuxt-chat/backend/hermes_cli/web_chat.py b/Users/pavolbiely/Sites/hermesum/.hermes/implementation/hermes-agent-nuxt-chat/backend/hermes_cli/web_chat.py
+diff --git a/backend/hermes_cli/web_chat.py b/backend/hermes_cli/web_chat.py
 new file mode 100644
 index 0000000..a36e566
 --- /dev/null
-+++ b/Users/pavolbiely/Sites/hermesum/.hermes/implementation/hermes-agent-nuxt-chat/backend/hermes_cli/web_chat.py
++++ b/backend/hermes_cli/web_chat.py
 @@ -0,0 +1,316 @@
 +"""Native web chat API for the Hermes dashboard.
 +
@@ -321,11 +321,11 @@ index 0000000..a36e566
 +def stop_run(run_id: str) -> StopRunResponse:
 +    return run_manager.stop(run_id)
 
-diff --git a/Users/pavolbiely/Sites/hermesum/.hermes/implementation/hermes-agent-nuxt-chat/backend/tests/hermes_cli/test_web_chat.py b/Users/pavolbiely/Sites/hermesum/.hermes/implementation/hermes-agent-nuxt-chat/backend/tests/hermes_cli/test_web_chat.py
+diff --git a/backend/tests/hermes_cli/test_web_chat.py b/backend/tests/hermes_cli/test_web_chat.py
 new file mode 100644
 index 0000000..0f53dd7
 --- /dev/null
-+++ b/Users/pavolbiely/Sites/hermesum/.hermes/implementation/hermes-agent-nuxt-chat/backend/tests/hermes_cli/test_web_chat.py
++++ b/backend/tests/hermes_cli/test_web_chat.py
 @@ -0,0 +1,150 @@
 +"""Tests for native web chat API endpoints."""
 +

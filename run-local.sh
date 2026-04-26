@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-UPSTREAM="${HERMES_AGENT_SOURCE:-/Users/pavolbiely/.hermes/hermes-agent}"
+UPSTREAM="${HERMES_AGENT_SOURCE:-$HOME/.hermes/hermes-agent}"
 RUNTIME="$ROOT/.runtime/hermes-agent"
 WEB="$ROOT/web"
 PORT="${PORT:-9119}"
