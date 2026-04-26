@@ -185,7 +185,7 @@ onBeforeUnmount(() => {
     </template>
 
     <template #body>
-      <UContainer class="py-6">
+      <UContainer class="mx-auto w-full max-w-[740px] py-6">
         <UChatMessages :messages="messages" :status="chatStatus">
           <template #content="{ message }: { message: WebChatMessage }">
             <div v-if="isThinkingMessage(message)" class="flex items-center gap-2 text-sm text-muted">
@@ -219,7 +219,7 @@ onBeforeUnmount(() => {
     </template>
 
     <template #footer>
-      <UContainer class="pb-4 sm:pb-6">
+      <UContainer class="mx-auto w-full max-w-[740px] pb-4 sm:pb-6">
         <UChatPrompt v-model="input" :error="error" @submit="onSubmit">
           <template #footer>
             <ChatPromptFooter
