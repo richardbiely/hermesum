@@ -35,10 +35,10 @@ provide('refreshSessions', refresh)
   <UDashboardGroup>
     <UDashboardSidebar collapsible resizable>
       <template #header>
-        <div class="flex items-center gap-2 px-2 py-1.5">
+        <NuxtLink to="/" class="flex items-center gap-2 px-2 py-1.5">
           <UIcon name="i-lucide-sparkles" class="size-5 text-primary" />
           <span class="font-semibold">Hermes Agent</span>
-        </div>
+        </NuxtLink>
       </template>
 
       <template #default>
