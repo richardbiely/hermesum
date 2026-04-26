@@ -14,3 +14,21 @@ html.dark .shiki span {
   font-weight: var(--shiki-dark-font-weight) !important;
   text-decoration: var(--shiki-dark-text-decoration) !important;
 }
+
+.tool-call-shimmer {
+  background: linear-gradient(90deg, currentColor 0%, color-mix(in oklab, currentColor 35%, transparent) 35%, currentColor 70%);
+  background-size: 220% 100%;
+  background-clip: text;
+  color: transparent;
+  animation: tool-call-shimmer 1.6s ease-in-out infinite alternate;
+}
+
+@keyframes tool-call-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+
+  to {
+    background-position: 0 0;
+  }
+}

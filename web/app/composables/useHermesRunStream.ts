@@ -3,6 +3,8 @@ import type { WebChatMessage } from '~/types/web-chat'
 type RunStreamHandlers = {
   onDelta?: (content: string) => void
   onCompleted?: (content?: string) => void
+  onToolStarted?: (payload: { name?: string, preview?: string, input?: unknown }) => void
+  onToolCompleted?: (payload: { name?: string }) => void
   onError?: (error: Error) => void
   onFinished?: () => void
 }
@@ -66,6 +68,16 @@ export function useHermesRunStream() {
     source.addEventListener('message.completed', (event) => {
       const payload = JSON.parse((event as MessageEvent).data)
       handlers.onCompleted?.(payload.content)
+    })
+
+    source.addEventListener('tool.started', (event) => {
+      const payload = JSON.parse((event as MessageEvent).data)
+      handlers.onToolStarted?.(payload)
+    })
+
+    source.addEventListener('tool.completed', (event) => {
+      const payload = JSON.parse((event as MessageEvent).data)
+      handlers.onToolCompleted?.(payload)
     })
 
     source.addEventListener('run.completed', () => {

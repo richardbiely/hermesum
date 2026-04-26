@@ -111,6 +111,31 @@ function replaceAssistantMessage(content?: string) {
   }
 }
 
+function appendToolStarted(payload: { name?: string, preview?: string, input?: unknown }) {
+  let assistant = messages.value[messages.value.length - 1]
+  if (!assistant || assistant.role !== 'assistant') {
+    assistant = createLocalMessage('assistant', '')
+    messages.value.push(assistant)
+  }
+
+  const thinkingIndex = assistant.parts.findIndex(part => part.status === 'thinking')
+  if (thinkingIndex >= 0) assistant.parts.splice(thinkingIndex, 1)
+
+  assistant.parts.push({
+    type: 'tool',
+    name: payload.name || 'Tool call',
+    status: 'running',
+    input: payload.input ?? payload.preview ?? null
+  })
+  scheduleAutoScroll()
+}
+
+function markToolCompleted(payload: { name?: string }) {
+  const assistant = [...messages.value].reverse().find(message => message.role === 'assistant')
+  const toolPart = assistant?.parts.findLast(part => part.type === 'tool' && part.status === 'running' && (!payload.name || part.name === payload.name))
+  if (toolPart) toolPart.status = 'completed'
+}
+
 function connectRun(runId: string) {
   connectedRunIds.add(runId)
   ensureThinkingMessage()
@@ -118,6 +143,8 @@ function connectRun(runId: string) {
   runStream.connect(runId, {
     onDelta: appendAssistantDelta,
     onCompleted: replaceAssistantMessage,
+    onToolStarted: appendToolStarted,
+    onToolCompleted: markToolCompleted,
     async onFinished() {
       await refresh()
       await refreshSessions?.()

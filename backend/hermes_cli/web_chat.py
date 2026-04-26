@@ -267,6 +267,17 @@ def _agent_executor(context: RunContext, emit: Callable[[dict[str, Any]], None])
         if text:
             emit({"type": "reasoning.delta", "content": text})
 
+    def tool_progress(kind: str, tool_name: str | None = None, preview: str | None = None, args: Any | None = None) -> None:
+        if kind not in {"tool.started", "tool.completed"}:
+            return
+
+        emit({
+            "type": kind,
+            "name": tool_name or "Tool call",
+            "preview": preview,
+            "input": args,
+        })
+
     agent = AIAgent(
         model=model,
         api_key=api_key,
@@ -291,6 +302,7 @@ def _agent_executor(context: RunContext, emit: Callable[[dict[str, Any]], None])
         reasoning_config=reasoning_config,
         stream_delta_callback=stream_delta,
         reasoning_callback=reasoning_delta,
+        tool_progress_callback=tool_progress,
     )
 
     result = agent.run_conversation(

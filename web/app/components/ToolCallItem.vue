@@ -12,6 +12,7 @@ type DetailSection = {
 }
 
 const toolName = computed(() => props.part.name || 'Tool call')
+const isRunning = computed(() => ['running', 'thinking', 'streaming', 'started'].includes(String(props.part.status || '')))
 
 function normalizeValue(value: unknown) {
   if (typeof value !== 'string') return value
@@ -73,6 +74,8 @@ function valueSummary(value: unknown) {
 }
 
 const summary = computed(() => {
+  if (isRunning.value) return valueSummary(props.part.input) || 'Running'
+
   const output = props.part.output
   if (isPresent(output)) return valueSummary(output)
 
@@ -81,6 +84,8 @@ const summary = computed(() => {
 
   return props.part.status || 'Details'
 })
+
+const actionLabel = computed(() => `${isRunning.value ? 'Running' : 'Ran'} ${toolName.value}`)
 </script>
 
 <template>
@@ -90,17 +95,22 @@ const summary = computed(() => {
     scrollable
     :ui="{ content: 'sm:max-w-3xl', body: 'p-0' }"
   >
-    <UButton
+    <button
       type="button"
-      color="neutral"
-      variant="subtle"
-      class="my-2 max-w-full justify-start overflow-hidden"
-      leading-icon="i-lucide-terminal"
-      trailing-icon="i-lucide-expand"
+      class="group my-1 flex max-w-full items-center gap-1.5 overflow-hidden text-left text-sm text-muted transition-colors hover:text-default"
     >
-      <span class="min-w-0 truncate text-left">{{ toolName }}</span>
-      <span class="min-w-0 truncate text-muted">{{ summary }}</span>
-    </UButton>
+      <UIcon
+        :name="isRunning ? 'i-lucide-loader-circle' : 'i-lucide-chevron-down'"
+        class="size-3.5 shrink-0 text-dimmed"
+        :class="{ 'animate-spin': isRunning }"
+      />
+      <span class="min-w-0 truncate" :class="{ 'tool-call-shimmer': isRunning }">
+        {{ actionLabel }}
+      </span>
+      <span v-if="summary" class="min-w-0 truncate text-dimmed" :class="{ 'tool-call-shimmer': isRunning }">
+        {{ summary }}
+      </span>
+    </button>
 
     <template #body>
       <div class="max-h-[70vh] overflow-y-auto p-4">
