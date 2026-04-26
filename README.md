@@ -13,7 +13,7 @@ backend/
   patches/hermes_cli-web_server.patch       # router wiring patch only
   patches/backend-web-chat-files.patch      # file additions patch
   patches/backend-web-chat-combined.patch   # file additions + web_server wiring
-web-nuxt/                                   # Nuxt UI prototype
+web/                                        # Nuxt UI prototype
 ```
 
 ## Implemented backend prototype
@@ -29,7 +29,7 @@ The run executor is intentionally injectable. The current default emits a placeh
 
 ## Implemented Nuxt prototype
 
-- Nuxt 4 static SPA in `web-nuxt/`.
+- Nuxt 4 static SPA in `web/`.
 - Nuxt UI dashboard shell/sidebar.
 - New chat page.
 - Chat detail page using `UChatMessages`, `UChatPrompt`, `UChatPromptSubmit`, `UChatReasoning`, `UChatTool`, and `Comark`.
@@ -42,10 +42,10 @@ Use two different run modes depending on whether you need live UI iteration or a
 
 ### 1. Nuxt watch mode for frontend development
 
-Use this when editing files under `web-nuxt/` and you want automatic refresh without restarting the server.
+Use this when editing files under `web/` and you want automatic refresh without restarting the server.
 
 ```bash
-cd web-nuxt
+cd web
 pnpm install
 pnpm dev
 ```
@@ -53,7 +53,7 @@ pnpm dev
 Nuxt starts on `http://127.0.0.1:3019/`.
 
 - This is the normal frontend development mode.
-- Changes in `web-nuxt/app/**` are picked up automatically via Nuxt/Vite HMR.
+- Changes in `web/app/**` are picked up automatically via Nuxt/Vite HMR.
 - You do not need to rerun the command after each change.
 - API requests still target the current origin under `/api/...`, so this mode is best for UI work unless you also wire a backend alongside it.
 
@@ -68,13 +68,13 @@ Use this when you want to launch the disposable Hermes runtime and serve the bui
 Important behavior:
 
 - `run-local.sh` does not run Nuxt in watch mode.
-- It installs dependencies if needed and serves the built output from `web-nuxt/.output/public`.
+- It installs dependencies if needed and serves the built output from `web/.output/public`.
 - If you change frontend files while `run-local.sh` is already running, those changes will not appear until you rebuild and restart.
 
 If you need to refresh the static build manually:
 
 ```bash
-cd web-nuxt
+cd web
 pnpm build
 ```
 
@@ -84,7 +84,7 @@ Then stop and start `./run-local.sh` again.
 
 For normal UI development:
 
-1. Run `pnpm dev` inside `web-nuxt/`.
+1. Run `pnpm dev` inside `web/`.
 2. Keep that process running while editing.
 3. Open `http://127.0.0.1:3019/`.
 4. Use `./run-local.sh` only when you specifically need to verify the Hermes-served static integration.
@@ -97,7 +97,7 @@ Backend verified by applying the prototype into a temporary local clone of `/Use
 6 passed in 1.12s
 ```
 
-Frontend verification from `web-nuxt/`:
+Frontend verification from `web/`:
 
 ```bash
 pnpm typecheck
