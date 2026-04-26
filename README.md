@@ -35,11 +35,42 @@ The run executor is intentionally injectable. The current default emits a placeh
 
 ## Development workflow
 
-Use two different run modes depending on whether you need live UI iteration or a static Hermes-integrated preview.
+Use fast dev mode for normal work, and static mode only when you need to verify the Hermes-served production-style bundle.
 
-### 1. Nuxt watch mode for frontend development
+### 1. Fast dev mode for frontend + Python development
 
-Use this when editing files under `web/` and you want automatic refresh without restarting the server.
+Use this for day-to-day iteration:
+
+```bash
+./run-local.sh --dev
+```
+
+Then open `http://127.0.0.1:3019/`.
+
+What this does:
+
+- Starts the Hermes backend/dashboard runtime on `http://127.0.0.1:9119`.
+- Starts Nuxt dev server on `http://127.0.0.1:3019`.
+- Proxies Nuxt `/api/...` requests to the Hermes backend.
+- Shares an ephemeral dev session token between Nuxt and Hermes so API and SSE calls are authenticated.
+- Picks up `web/app/**` changes through Nuxt/Vite HMR without rebuilding the static app.
+- Restarts the Hermes backend when watched Python files change.
+
+Useful environment overrides:
+
+```bash
+PORT=9120 WEB_DEV_PORT=3020 ./run-local.sh --dev
+```
+
+Important behavior:
+
+- Frontend changes should not trigger `pnpm build`.
+- Python changes restart the backend process, so in-flight chats/SSE streams can be interrupted.
+- The upstream Hermes checkout is only copied from; runtime patches are applied under `.runtime/hermes-agent`.
+
+### 2. Nuxt-only watch mode for isolated frontend work
+
+Use this when editing files under `web/` and you only need Nuxt itself:
 
 ```bash
 cd web
@@ -49,12 +80,11 @@ pnpm dev
 
 Nuxt starts on `http://127.0.0.1:3019/`.
 
-- This is the normal frontend development mode.
 - Changes in `web/app/**` are picked up automatically via Nuxt/Vite HMR.
 - You do not need to rerun the command after each change.
-- API requests still target the current origin under `/api/...`, so this mode is best for UI work unless you also wire a backend alongside it.
+- API requests use same-origin `/api/...`; for working Hermes APIs, prefer `./run-local.sh --dev`.
 
-### 2. Hermes-integrated local preview
+### 3. Hermes-integrated static preview
 
 Use this when you want to launch the disposable Hermes runtime and serve the built Nuxt app through Hermes:
 
@@ -68,7 +98,7 @@ Important behavior:
 - It installs dependencies if needed and serves the built output from `web/.output/public`.
 - If you change frontend files while `run-local.sh` is already running, those changes will not appear until you rebuild and restart.
 
-### 3. Backend watch mode for Python changes
+### 4. Backend watch mode for static Python changes
 
 Use this when you are editing Python files and want Hermes to restart automatically:
 
@@ -94,13 +124,12 @@ Then stop and start `./run-local.sh` again.
 
 ### Recommended day-to-day loop
 
-For normal UI development:
+For normal UI and Python development:
 
-1. Run `pnpm dev` inside `web/`.
-2. Keep that process running while editing.
-3. Open `http://127.0.0.1:3019/`.
-4. Use `./run-local.sh --watch` when you are iterating on Python backend changes.
-5. Use `./run-local.sh` only when you specifically need to verify the Hermes-served static integration without the watcher.
+1. Run `./run-local.sh --dev`.
+2. Open `http://127.0.0.1:3019/`.
+3. Keep that process running while editing.
+4. Use `./run-local.sh` only when you specifically need to verify the Hermes-served static integration.
 
 ## Verification run
 

@@ -6,21 +6,28 @@ UPSTREAM="${HERMES_AGENT_SOURCE:-$HOME/.hermes/hermes-agent}"
 RUNTIME="$ROOT/.runtime/hermes-agent"
 WEB="$ROOT/web"
 PORT="${PORT:-9119}"
+WEB_DEV_PORT="${WEB_DEV_PORT:-3019}"
 PYTHON="$UPSTREAM/venv/bin/python"
 WATCH=0
+DEV=0
 WATCH_INTERVAL="${WATCH_INTERVAL:-1}"
+HERMES_SESSION_TOKEN_OVERRIDE=""
+WEB_DEV_PID=""
 
 usage() {
   cat <<EOF
-Usage: ./run-local.sh [--watch]
+Usage: ./run-local.sh [--watch|--dev]
 
 Options:
   --watch    Restart the Hermes dashboard when watched Python files change.
+  --dev      Run Hermes backend with Python autorestart and Nuxt dev server with HMR.
 
 Environment:
-  HERMES_AGENT_SOURCE  Path to the upstream Hermes checkout.
-  PORT                 Dashboard port. Default: 9119.
-  WATCH_INTERVAL       Poll interval in seconds in watch mode. Default: 1.
+  HERMES_AGENT_SOURCE     Path to the upstream Hermes checkout.
+  HERMES_DEV_SESSION_TOKEN Optional fixed dev auth token for --dev.
+  PORT                    Dashboard port. Default: 9119.
+  WEB_DEV_PORT            Nuxt dev server port for --dev. Default: 3019.
+  WATCH_INTERVAL          Poll interval in seconds in watch mode. Default: 1.
 EOF
 }
 
@@ -28,6 +35,9 @@ for arg in "$@"; do
   case "$arg" in
     --watch)
       WATCH=1
+      ;;
+    --dev)
+      DEV=1
       ;;
     -h|--help)
       usage
@@ -40,6 +50,12 @@ for arg in "$@"; do
       ;;
   esac
 done
+
+if [[ "$WATCH" == "1" && "$DEV" == "1" ]]; then
+  echo "Use either --watch or --dev, not both." >&2
+  usage >&2
+  exit 1
+fi
 
 if [[ ! -x "$PYTHON" ]]; then
   echo "Missing Hermes venv python: $PYTHON" >&2
@@ -68,6 +84,7 @@ prepare_runtime() {
   RUNTIME_WEB_SERVER="$RUNTIME/hermes_cli/web_server.py" RUNTIME_HERMES_STATE="$RUNTIME/hermes_state.py" "$PYTHON" - <<'PY'
 from pathlib import Path
 import os
+import re
 
 path = Path(os.environ["RUNTIME_WEB_SERVER"])
 text = path.read_text()
@@ -87,6 +104,16 @@ if 'request.query_params.get("session_token", "")' not in text:
     needle = """    if session_header and hmac.compare_digest(\n        session_header.encode(),\n        _SESSION_TOKEN.encode(),\n    ):\n        return True\n\n"""
     replacement = needle + """    if request.url.path.startswith("/api/web-chat/runs/") and request.url.path.endswith("/events"):\n        session_token = request.query_params.get("session_token", "")\n        if session_token and hmac.compare_digest(session_token.encode(), _SESSION_TOKEN.encode()):\n            return True\n\n"""
     text = text.replace(needle, replacement, 1)
+
+if 'os.environ.get("HERMES_SESSION_TOKEN")' not in text:
+    text, count = re.subn(
+        r"_SESSION_TOKEN\s*=\s*secrets\.token_urlsafe\(24\)",
+        '_SESSION_TOKEN = os.environ.get("HERMES_SESSION_TOKEN") or secrets.token_urlsafe(24)',
+        text,
+        count=1,
+    )
+    if count != 1:
+        raise RuntimeError("Could not patch Hermes web session token override")
 
 path.write_text(text)
 
@@ -163,6 +190,24 @@ ensure_web_build() {
   mkdir -p "$WEB/.output/public/assets"
 }
 
+ensure_web_deps() {
+  if [[ ! -d "$WEB/node_modules" ]]; then
+    echo "Installing Nuxt dependencies..."
+    (cd "$WEB" && pnpm install --frozen-lockfile)
+  fi
+
+  # The Hermes backend still receives HERMES_WEB_DIST in --dev, but the browser
+  # is served by Nuxt. Keep the mount directory present without running a build.
+  mkdir -p "$WEB/.output/public/assets"
+}
+
+generate_session_token() {
+  "$PYTHON" - <<'PY'
+import secrets
+print(secrets.token_urlsafe(24))
+PY
+}
+
 watch_signature() {
   ROOT="$ROOT" UPSTREAM="$UPSTREAM" "$PYTHON" - <<'PY'
 from __future__ import annotations
@@ -178,7 +223,7 @@ watch_roots = [
     root / "backend",
     upstream,
 ]
-skip_dirs = {".git", ".mypy_cache", ".pytest_cache", "__pycache__", "venv", "node_modules"}
+skip_dirs = {".git", ".mypy_cache", ".pytest_cache", "__pycache__", "venv", ".venv", "node_modules", ".runtime"}
 items: list[str] = []
 
 for base in watch_roots:
@@ -197,12 +242,16 @@ PY
 CHILD_PID=""
 
 start_dashboard() {
-  echo "Starting Hermes dashboard with Nuxt prototype on http://127.0.0.1:$PORT"
+  echo "Starting Hermes dashboard backend on http://127.0.0.1:$PORT"
   echo "Runtime copy: $RUNTIME"
   echo "Source checkout is only read/copied, not modified: $UPSTREAM"
   (
     cd "$RUNTIME"
-    HERMES_WEB_DIST="$WEB/.output/public" "$PYTHON" -m hermes_cli.main dashboard --port "$PORT"
+    local env_args=("HERMES_WEB_DIST=$WEB/.output/public")
+    if [[ -n "${DEV_AUTH_VALUE:-}" ]]; then
+      env_args+=("HERMES_SESSION_TOKEN=$HERMES_SESSION_TOKEN_OVERRIDE")
+    fi
+    env "${env_args[@]}" "$PYTHON" -m hermes_cli.main dashboard --port "$PORT"
   ) &
   CHILD_PID=$!
 }
@@ -216,32 +265,54 @@ stop_dashboard() {
 }
 
 kill_existing_port_processes() {
+  local target_port="${1:-$PORT}"
   if ! command -v lsof >/dev/null 2>&1; then
-    echo "Warning: lsof not found; cannot auto-stop existing process on port $PORT" >&2
+    echo "Warning: lsof not found; cannot auto-stop existing process on port $target_port" >&2
     return
   fi
 
   local pids
-  pids="$(lsof -ti tcp:"$PORT" 2>/dev/null || true)"
+  pids="$(lsof -ti tcp:"$target_port" 2>/dev/null || true)"
   if [[ -z "$pids" ]]; then
     return
   fi
 
-  echo "Stopping existing process(es) on port $PORT: $pids"
+  echo "Stopping existing process(es) on port $target_port: $pids"
   while IFS= read -r pid; do
     [[ -n "$pid" ]] || continue
     kill "$pid" 2>/dev/null || true
   done <<< "$pids"
 }
 
+start_nuxt_dev() {
+  echo "Starting Nuxt dev server on http://127.0.0.1:$WEB_DEV_PORT"
+  echo "Proxying /api to http://127.0.0.1:$PORT"
+  (
+    cd "$WEB"
+    HERMES_API_ORIGIN="http://127.0.0.1:$PORT" \
+      NUXT_PUBLIC_HERMES_SESSION_TOKEN="$HERMES_SESSION_TOKEN_OVERRIDE" \
+      pnpm dev --host 127.0.0.1 --port "$WEB_DEV_PORT"
+  ) &
+  WEB_DEV_PID=$!
+}
+
+stop_nuxt_dev() {
+  if [[ -n "${WEB_DEV_PID:-}" ]] && kill -0 "$WEB_DEV_PID" 2>/dev/null; then
+    kill "$WEB_DEV_PID" 2>/dev/null || true
+    wait "$WEB_DEV_PID" 2>/dev/null || true
+  fi
+  WEB_DEV_PID=""
+}
+
 cleanup() {
+  stop_nuxt_dev
   stop_dashboard
 }
 
 run_once() {
   prepare_runtime
   ensure_web_build
-  kill_existing_port_processes
+  kill_existing_port_processes "$PORT"
   echo "Starting Hermes dashboard with Nuxt prototype on http://127.0.0.1:$PORT"
   echo "Runtime copy: $RUNTIME"
   echo "Source checkout is only read/copied, not modified: $UPSTREAM"
@@ -254,7 +325,7 @@ run_watch() {
 
   prepare_runtime
   ensure_web_build
-  kill_existing_port_processes
+  kill_existing_port_processes "$PORT"
   local current_sig
   current_sig="$(watch_signature)"
   start_dashboard
@@ -284,7 +355,57 @@ run_watch() {
   done
 }
 
-if [[ "$WATCH" == "1" ]]; then
+run_dev() {
+  trap cleanup EXIT INT TERM
+
+  HERMES_SESSION_TOKEN_OVERRIDE="${HERMES_DEV_SESSION_TOKEN:-$(generate_session_token)}"
+
+  prepare_runtime
+  ensure_web_deps
+  kill_existing_port_processes "$PORT"
+  kill_existing_port_processes "$WEB_DEV_PORT"
+
+  local current_sig
+  current_sig="$(watch_signature)"
+  start_dashboard
+  start_nuxt_dev
+
+  echo ""
+  echo "Fast dev mode ready: http://127.0.0.1:$WEB_DEV_PORT"
+  echo "Frontend changes use Nuxt HMR; Python changes restart only the Hermes backend."
+  echo ""
+
+  while true; do
+    sleep "$WATCH_INTERVAL"
+
+    if [[ -n "${WEB_DEV_PID:-}" ]] && ! kill -0 "$WEB_DEV_PID" 2>/dev/null; then
+      echo "Nuxt dev server exited; stopping dev mode."
+      exit 1
+    fi
+
+    if [[ -n "${CHILD_PID:-}" ]] && ! kill -0 "$CHILD_PID" 2>/dev/null; then
+      echo "Dashboard backend process exited; restarting..."
+      prepare_runtime
+      start_dashboard
+      current_sig="$(watch_signature)"
+      continue
+    fi
+
+    local next_sig
+    next_sig="$(watch_signature)"
+    if [[ "$next_sig" != "$current_sig" ]]; then
+      echo "Detected Python change, restarting Hermes dashboard backend..."
+      stop_dashboard
+      prepare_runtime
+      start_dashboard
+      current_sig="$next_sig"
+    fi
+  done
+}
+
+if [[ "$DEV" == "1" ]]; then
+  run_dev
+elif [[ "$WATCH" == "1" ]]; then
   run_watch
 else
   run_once

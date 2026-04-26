@@ -8,7 +8,8 @@ import type {
 
 function hermesToken() {
   if (import.meta.server) return undefined
-  return window.__HERMES_SESSION_TOKEN__
+  const runtimeToken = useRuntimeConfig().public.hermesSessionToken
+  return window.__HERMES_SESSION_TOKEN__ || (typeof runtimeToken === 'string' ? runtimeToken : undefined)
 }
 
 export function useHermesApi() {
