@@ -5,7 +5,7 @@ declare global {
 }
 
 export type WebChatPart = {
-  type: 'text' | 'reasoning' | 'tool' | 'media' | 'approval'
+  type: 'text' | 'reasoning' | 'tool' | 'media' | 'approval' | 'changes'
   text?: string | null
   name?: string | null
   status?: string | null
@@ -14,6 +14,7 @@ export type WebChatPart = {
   url?: string | null
   mediaType?: string | null
   approvalId?: string | null
+  changes?: WebChatWorkspaceChanges | null
 }
 
 export type WebChatMessage = {
@@ -49,6 +50,20 @@ export type WebChatCapabilitiesResponse = {
   provider: string
   defaultModel: string | null
   models: WebChatModelCapability[]
+}
+
+export type WebChatFileChange = {
+  path: string
+  status: 'created' | 'edited' | 'deleted' | 'renamed' | 'copied'
+  additions: number
+  deletions: number
+}
+
+export type WebChatWorkspaceChanges = {
+  files: WebChatFileChange[]
+  totalFiles: number
+  totalAdditions: number
+  totalDeletions: number
 }
 
 export type SessionListResponse = {

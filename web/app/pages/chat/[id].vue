@@ -136,6 +136,22 @@ function markToolCompleted(payload: { name?: string }) {
   if (toolPart) toolPart.status = 'completed'
 }
 
+async function appendWorkspaceChanges() {
+  const changes = await api.getWorkspaceChanges()
+  if (!changes.files.length) return
+
+  const assistant = [...messages.value].reverse().find(message => message.role === 'assistant')
+  if (!assistant) return
+
+  const existingIndex = assistant.parts.findIndex(part => part.type === 'changes')
+  const part = { type: 'changes' as const, changes }
+  if (existingIndex >= 0) {
+    assistant.parts[existingIndex] = part
+  } else {
+    assistant.parts.push(part)
+  }
+}
+
 function connectRun(runId: string) {
   connectedRunIds.add(runId)
   ensureThinkingMessage()
@@ -147,6 +163,7 @@ function connectRun(runId: string) {
     onToolCompleted: markToolCompleted,
     async onFinished() {
       await refresh()
+      await appendWorkspaceChanges()
       await refreshSessions?.()
     }
   })
@@ -226,6 +243,11 @@ onBeforeUnmount(() => {
               </UChatReasoning>
 
               <ToolCallItem v-else-if="part.type === 'tool'" :part="part" />
+
+              <ChatChangeSummary
+                v-else-if="part.type === 'changes' && part.changes"
+                :changes="part.changes"
+              />
 
               <template v-else-if="part.type === 'text'">
                 <Comark

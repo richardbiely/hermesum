@@ -2,7 +2,8 @@ import type {
   SessionDetailResponse,
   SessionListResponse,
   StartRunResponse,
-  WebChatCapabilitiesResponse
+  WebChatCapabilitiesResponse,
+  WebChatWorkspaceChanges
 } from '~/types/web-chat'
 
 function hermesToken() {
@@ -23,8 +24,11 @@ export function useHermesApi() {
 
   return {
     getCapabilities: () => request<WebChatCapabilitiesResponse>('/api/web-chat/capabilities'),
+    getWorkspaceChanges: () => request<WebChatWorkspaceChanges>('/api/web-chat/workspace-changes'),
     listSessions: () => request<SessionListResponse>('/api/web-chat/sessions'),
-    getSession: (id: string) => request<SessionDetailResponse>(`/api/web-chat/sessions/${id}`),
+    getSession: (id: string) => request<SessionDetailResponse>(`/api/web-chat/sessions/${id}`, {
+      query: { includeWorkspaceChanges: true }
+    }),
     createSession: (message: string) => request<SessionDetailResponse>('/api/web-chat/sessions', {
       method: 'POST',
       body: { message }

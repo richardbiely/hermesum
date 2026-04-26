@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import subprocess
 from datetime import datetime
 
 import pytest
@@ -96,7 +97,7 @@ def test_returns_session_with_messages(client):
     assert data["session"]["messageCount"] == 2
     assert data["session"]["reasoningEffort"] is None
     assert [message["role"] for message in data["messages"]] == ["user", "assistant"]
-    assert data["messages"][0]["parts"] == [{"type": "text", "text": "Can you help?", "name": None, "status": None, "input": None, "output": None, "url": None, "mediaType": None, "approvalId": None}]
+    assert data["messages"][0]["parts"] == [{"type": "text", "text": "Can you help?", "name": None, "status": None, "input": None, "output": None, "url": None, "mediaType": None, "approvalId": None, "changes": None}]
     assert data["messages"][1]["parts"][0]["type"] == "reasoning"
     assert data["messages"][1]["parts"][0]["text"] == "Short reasoning"
     assert data["messages"][1]["parts"][1]["text"] == "Yes."
@@ -174,6 +175,71 @@ def test_returns_chat_capabilities(client, monkeypatch):
             "defaultReasoningEffort": "medium",
         },
     ]
+
+
+def test_returns_workspace_change_summary(client, tmp_path, monkeypatch):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
+    (repo / "tracked.txt").write_text("one\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "-m", "initial"],
+        check=True,
+        capture_output=True,
+    )
+    (repo / "tracked.txt").write_text("one\ntwo\nthree\n", encoding="utf-8")
+    (repo / "new.txt").write_text("new\nfile\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+
+    response = client.get("/api/web-chat/workspace-changes")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "files": [
+            {"path": "tracked.txt", "status": "edited", "additions": 2, "deletions": 0},
+            {"path": "new.txt", "status": "created", "additions": 2, "deletions": 0},
+        ],
+        "totalFiles": 2,
+        "totalAdditions": 4,
+        "totalDeletions": 0,
+    }
+
+
+def test_session_detail_can_include_workspace_changes(client, tmp_path, monkeypatch):
+    from hermes_state import SessionDB
+
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
+    (repo / "tracked.txt").write_text("one\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo), "-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "-m", "initial"],
+        check=True,
+        capture_output=True,
+    )
+    (repo / "tracked.txt").write_text("one\ntwo\n", encoding="utf-8")
+    monkeypatch.chdir(repo)
+
+    db = SessionDB()
+    db.create_session("session-with-changes", source="web-chat", model="test-model")
+    db.append_message("session-with-changes", "user", "Change a file")
+    db.append_message("session-with-changes", "assistant", "Done")
+
+    plain = client.get("/api/web-chat/sessions/session-with-changes")
+    with_changes = client.get("/api/web-chat/sessions/session-with-changes?includeWorkspaceChanges=true")
+
+    assert plain.status_code == 200
+    assert [part["type"] for part in plain.json()["messages"][1]["parts"]] == ["text"]
+    assert with_changes.status_code == 200
+    assert [part["type"] for part in with_changes.json()["messages"][1]["parts"]] == ["text", "changes"]
+    assert with_changes.json()["messages"][1]["parts"][1]["changes"] == {
+        "files": [{"path": "tracked.txt", "status": "edited", "additions": 1, "deletions": 0}],
+        "totalFiles": 1,
+        "totalAdditions": 1,
+        "totalDeletions": 0,
+    }
 
 
 def test_creates_session_with_initial_user_message(client):

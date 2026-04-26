@@ -9,10 +9,13 @@ from __future__ import annotations
 
 import json
 import queue
+import os
+import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Callable, Literal
 from uuid import uuid4
 
@@ -30,7 +33,7 @@ RunExecutor = Callable[["RunContext", Callable[[dict[str, Any]], None]], str]
 
 
 class WebChatPart(BaseModel):
-    type: Literal["text", "reasoning", "tool", "media", "approval"]
+    type: Literal["text", "reasoning", "tool", "media", "approval", "changes"]
     text: str | None = None
     name: str | None = None
     status: str | None = None
@@ -39,6 +42,7 @@ class WebChatPart(BaseModel):
     url: str | None = None
     mediaType: str | None = None
     approvalId: str | None = None
+    changes: Any | None = None
 
 
 class WebChatMessage(BaseModel):
@@ -74,6 +78,20 @@ class WebChatCapabilitiesResponse(BaseModel):
     provider: str
     defaultModel: str | None
     models: list[WebChatModelCapability]
+
+
+class WebChatFileChange(BaseModel):
+    path: str
+    status: str
+    additions: int
+    deletions: int
+
+
+class WebChatWorkspaceChanges(BaseModel):
+    files: list[WebChatFileChange]
+    totalFiles: int
+    totalAdditions: int
+    totalDeletions: int
 
 
 class SessionListResponse(BaseModel):
@@ -468,13 +486,32 @@ def _attach_tool_output(messages: list[WebChatMessage], tool_message: dict[str, 
     return False
 
 
-def _serialize_messages(messages: list[dict[str, Any]]) -> list[WebChatMessage]:
+def _serialize_messages(messages: list[dict[str, Any]], *, include_workspace_changes: bool = False) -> list[WebChatMessage]:
     serialized: list[WebChatMessage] = []
     for message in messages:
         if message.get("role") == "tool" and _attach_tool_output(serialized, message):
             continue
         serialized.append(_serialize_message(message))
+    if include_workspace_changes:
+        _attach_workspace_changes(serialized)
     return serialized
+
+
+def _attach_workspace_changes(messages: list[WebChatMessage]) -> None:
+    changes = _workspace_changes()
+    if not changes.files:
+        return
+
+    for message in reversed(messages):
+        if message.role != "assistant":
+            continue
+        part = WebChatPart(type="changes", changes=changes.model_dump())
+        for index, existing in enumerate(message.parts):
+            if existing.type == "changes":
+                message.parts[index] = part
+                return
+        message.parts.append(part)
+        return
 
 
 def _get_session_or_404(db: SessionDB, session_id: str) -> dict[str, Any]:
@@ -572,6 +609,117 @@ def _default_reasoning_effort(model_id: str | None) -> str | None:
     return efforts[0] if efforts else None
 
 
+def _workspace_root(workspace: str | None = None) -> Path | None:
+    candidate = Path(workspace or os.getcwd()).expanduser()
+    try:
+        root = subprocess.run(
+            ["git", "-C", str(candidate), "rev-parse", "--show-toplevel"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=5,
+        ).stdout.strip()
+    except Exception:
+        return None
+    return Path(root) if root else None
+
+
+def _workspace_changes(workspace: str | None = None) -> WebChatWorkspaceChanges:
+    root = _workspace_root(workspace)
+    if not root:
+        return WebChatWorkspaceChanges(files=[], totalFiles=0, totalAdditions=0, totalDeletions=0)
+
+    try:
+        numstat_result = subprocess.run(
+            ["git", "-C", str(root), "diff", "--numstat", "HEAD", "--"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        status_result = subprocess.run(
+            ["git", "-C", str(root), "diff", "--name-status", "HEAD", "--"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return WebChatWorkspaceChanges(files=[], totalFiles=0, totalAdditions=0, totalDeletions=0)
+
+    statuses = _git_name_statuses(status_result.stdout)
+    files: list[WebChatFileChange] = []
+    seen_paths: set[str] = set()
+    for line in numstat_result.stdout.splitlines():
+        additions, deletions, path = line.split("\t", 2)
+        if additions == "-" or deletions == "-":
+            add_count = 0
+            delete_count = 0
+        else:
+            add_count = int(additions)
+            delete_count = int(deletions)
+        files.append(WebChatFileChange(path=path, status=statuses.get(path, "edited"), additions=add_count, deletions=delete_count))
+        seen_paths.add(path)
+
+    for path in _git_untracked_files(root):
+        if path in seen_paths:
+            continue
+        files.append(WebChatFileChange(path=path, status="created", additions=_count_text_lines(root / path), deletions=0))
+
+    return WebChatWorkspaceChanges(
+        files=files,
+        totalFiles=len(files),
+        totalAdditions=sum(file.additions for file in files),
+        totalDeletions=sum(file.deletions for file in files),
+    )
+
+
+def _git_name_statuses(output: str) -> dict[str, str]:
+    statuses: dict[str, str] = {}
+    labels = {
+        "A": "created",
+        "M": "edited",
+        "D": "deleted",
+        "R": "renamed",
+        "C": "copied",
+    }
+    for line in output.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 2:
+            continue
+        code = parts[0][:1]
+        path = parts[-1]
+        statuses[path] = labels.get(code, "edited")
+    return statuses
+
+
+def _git_untracked_files(root: Path) -> list[str]:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "ls-files", "--others", "--exclude-standard"],
+            check=True,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except Exception:
+        return []
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def _count_text_lines(path: Path) -> int:
+    try:
+        data = path.read_bytes()
+    except Exception:
+        return 0
+    if b"\0" in data:
+        return 0
+    text = data.decode("utf-8", errors="ignore")
+    if not text:
+        return 0
+    return text.count("\n") + (0 if text.endswith("\n") else 1)
+
+
 def _model_capabilities() -> list[WebChatModelCapability]:
     capabilities: list[WebChatModelCapability] = []
     for model_id in _available_model_ids():
@@ -659,6 +807,11 @@ def get_capabilities() -> WebChatCapabilitiesResponse:
     )
 
 
+@router.get("/workspace-changes", response_model=WebChatWorkspaceChanges)
+def get_workspace_changes(workspace: str | None = None) -> WebChatWorkspaceChanges:
+    return _workspace_changes(workspace)
+
+
 @router.post("/sessions", status_code=status.HTTP_201_CREATED, response_model=SessionDetailResponse)
 def create_session(payload: CreateSessionRequest) -> SessionDetailResponse:
     db = _db()
@@ -678,13 +831,13 @@ def create_session(payload: CreateSessionRequest) -> SessionDetailResponse:
 
 
 @router.get("/sessions/{session_id}", response_model=SessionDetailResponse)
-def get_session(session_id: str) -> SessionDetailResponse:
+def get_session(session_id: str, includeWorkspaceChanges: bool = Query(default=False)) -> SessionDetailResponse:
     db = _db()
     session = _get_session_or_404(db, session_id)
     messages = db.get_messages(session_id)
     return SessionDetailResponse(
         session=_serialize_session(session),
-        messages=_serialize_messages(messages),
+        messages=_serialize_messages(messages, include_workspace_changes=includeWorkspaceChanges),
     )
 
 
