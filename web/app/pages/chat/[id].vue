@@ -258,7 +258,7 @@ onBeforeUnmount(() => {
             <template #indicator>
               <div class="flex items-center gap-2 overflow-hidden text-muted">
                 <UIcon name="i-lucide-loader-circle" class="size-4 shrink-0 animate-spin" />
-                <UChatShimmer text="Thinking…" class="text-sm" />
+                <UChatShimmer text="Thinking…" class="rainbow-chat-shimmer text-sm" />
               </div>
             </template>
 
