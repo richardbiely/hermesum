@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
@@ -19,8 +20,43 @@ class WebChatAttachment(BaseModel):
     exists: bool = True
 
 
+class WebChatPromptChoice(BaseModel):
+    id: str
+    label: str
+    description: str | None = None
+    style: Literal["neutral", "primary", "warning", "error"] = "neutral"
+
+
+class WebChatPrompt(BaseModel):
+    id: str
+    runId: str
+    sessionId: str
+    kind: Literal["approval", "question"]
+    title: str
+    description: str | None = None
+    detail: str | None = None
+    detailType: Literal["text", "command", "json"] = "text"
+    choices: list[WebChatPromptChoice] = Field(default_factory=list)
+    freeText: bool = False
+    status: Literal["pending", "answered", "expired", "cancelled"] = "pending"
+    selectedChoice: str | None = None
+    responseText: str | None = None
+    createdAt: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
+    answeredAt: str | None = None
+    expiresAt: str | None = None
+
+
+class RespondRunPromptRequest(BaseModel):
+    choice: str | None = None
+    text: str | None = None
+
+
+class RespondRunPromptResponse(BaseModel):
+    prompt: WebChatPrompt
+
+
 class WebChatPart(BaseModel):
-    type: Literal["text", "reasoning", "tool", "media", "approval", "changes"]
+    type: Literal["text", "reasoning", "tool", "media", "interactive_prompt", "changes"]
     text: str | None = None
     name: str | None = None
     status: str | None = None
@@ -29,6 +65,7 @@ class WebChatPart(BaseModel):
     url: str | None = None
     mediaType: str | None = None
     approvalId: str | None = None
+    prompt: WebChatPrompt | None = None
     changes: Any | None = None
     attachments: list[WebChatAttachment] | None = None
 

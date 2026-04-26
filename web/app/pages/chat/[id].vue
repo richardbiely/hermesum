@@ -99,6 +99,7 @@ const {
 })
 
 watchEffect(() => {
+  activeChatRuns.clearPromptUnread(sessionId.value)
   if (data.value?.session.id !== sessionId.value) {
     messages.value = []
     return

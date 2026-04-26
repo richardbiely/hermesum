@@ -7,12 +7,13 @@ import queue
 import threading
 import time
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from typing import Any, Callable
 from uuid import uuid4
 
 from fastapi import HTTPException, status
 
-from .models import StartRunRequest, StartRunResponse, StopRunResponse
+from .models import RespondRunPromptRequest, RespondRunPromptResponse, StartRunRequest, StartRunResponse, StopRunResponse, WebChatPrompt
 
 RunExecutor = Callable[["RunContext", Callable[[dict[str, Any]], None]], str]
 
@@ -32,12 +33,15 @@ class RunContext:
     baseline_git_status: str | None = None
     stop_requested: threading.Event = field(default_factory=threading.Event)
     interrupt_agent: Callable[[str | None], None] | None = None
+    request_prompt: Callable[[WebChatPrompt, float], str | None] | None = field(default=None, repr=False)
 
 
 @dataclass
 class ActiveRun:
     context: RunContext
     events: "queue.Queue[dict[str, Any] | None]" = field(default_factory=queue.Queue)
+    prompts: dict[str, WebChatPrompt] = field(default_factory=dict)
+    prompt_responses: dict[str, "queue.Queue[str | None]"] = field(default_factory=dict)
     thread: threading.Thread | None = None
     created_at: float = field(default_factory=time.time)
 
@@ -173,10 +177,39 @@ class RunManager:
     def stop(self, run_id: str) -> StopRunResponse:
         active = self._get(run_id)
         active.context.stop_requested.set()
+        self._cancel_pending_prompts(active)
         if active.context.interrupt_agent:
             active.context.interrupt_agent("Chat interrupted by user")
         active.events.put({"type": "run.stopping", "runId": run_id})
         return StopRunResponse(runId=run_id, stopped=True)
+
+    def respond_prompt(self, run_id: str, prompt_id: str, request: RespondRunPromptRequest) -> RespondRunPromptResponse:
+        active = self._get(run_id)
+        with self._lock:
+            prompt = active.prompts.get(prompt_id)
+            response_queue = active.prompt_responses.get(prompt_id)
+            if not prompt:
+                raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Prompt not found")
+            if prompt.status != "pending":
+                raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Prompt is no longer pending")
+            if not request.choice and not request.text:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt response requires a choice or text")
+            if request.choice:
+                allowed_choices = {choice.id for choice in prompt.choices}
+                if request.choice not in allowed_choices:
+                    raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid prompt choice")
+            if request.text and not prompt.freeText and not request.choice:
+                raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Prompt does not accept free-text responses")
+
+            prompt.status = "answered"
+            prompt.selectedChoice = request.choice
+            prompt.responseText = request.text
+            prompt.answeredAt = self._iso_now()
+
+        if response_queue:
+            response_queue.put(request.choice or request.text)
+        self._emit(active, {"type": "prompt.answered", "prompt": prompt.model_dump()})
+        return RespondRunPromptResponse(prompt=prompt)
 
     def has_running_runs(self) -> bool:
         with self._lock:
@@ -192,26 +225,86 @@ class RunManager:
     def _emit(self, active: ActiveRun, event: dict[str, Any]) -> None:
         active.events.put({"runId": active.context.run_id, "sessionId": active.context.session_id, **event})
 
+    def _iso_now(self) -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+    def _request_prompt(self, active: ActiveRun, prompt: WebChatPrompt, timeout_seconds: float = 600) -> str | None:
+        prompt.runId = active.context.run_id
+        prompt.sessionId = active.context.session_id
+        prompt.createdAt = prompt.createdAt or self._iso_now()
+        prompt.status = "pending"
+        response_queue: "queue.Queue[str | None]" = queue.Queue(maxsize=1)
+        with self._lock:
+            active.prompts[prompt.id] = prompt
+            active.prompt_responses[prompt.id] = response_queue
+        self._emit(active, {"type": "prompt.requested", "prompt": prompt.model_dump()})
+
+        try:
+            answer = response_queue.get(timeout=timeout_seconds)
+        except queue.Empty:
+            with self._lock:
+                if prompt.status == "pending":
+                    prompt.status = "expired"
+                    prompt.answeredAt = self._iso_now()
+                    self._emit(active, {"type": "prompt.expired", "prompt": prompt.model_dump()})
+            return None
+        finally:
+            with self._lock:
+                active.prompt_responses.pop(prompt.id, None)
+
+        return answer
+
+    def _cancel_pending_prompts(self, active: ActiveRun) -> None:
+        with self._lock:
+            pending = [prompt for prompt in active.prompts.values() if prompt.status == "pending"]
+            queues = [active.prompt_responses.get(prompt.id) for prompt in pending]
+            for prompt in pending:
+                prompt.status = "cancelled"
+                prompt.answeredAt = self._iso_now()
+
+        for prompt, response_queue in zip(pending, queues):
+            if response_queue:
+                response_queue.put(None)
+            self._emit(active, {"type": "prompt.cancelled", "prompt": prompt.model_dump()})
+
+    def _prompt_items(self, active: ActiveRun) -> list[dict[str, Any]] | None:
+        prompts = list(active.prompts.values())
+        if not prompts:
+            return None
+        return [{"type": "web_chat_prompt", "prompt": prompt.model_dump()} for prompt in prompts]
+
     def _run(self, active: ActiveRun) -> None:
         self._emit(active, {"type": "run.started"})
         assistant_message_id: int | None = None
         try:
+            active.context.request_prompt = lambda prompt, timeout_seconds=600: self._request_prompt(active, prompt, timeout_seconds)
             final_text = self._executor(active.context, lambda event: self._emit(active, event))
             if active.context.stop_requested.is_set():
                 interrupted_text = "Chat interrupted."
-                assistant_message_id = self._services.db().append_message(active.context.session_id, "assistant", interrupted_text)
+                assistant_message_id = self._services.db().append_message(
+                    active.context.session_id,
+                    "assistant",
+                    interrupted_text,
+                    codex_message_items=self._prompt_items(active),
+                )
                 self._services.persist_run_workspace_changes(active.context, assistant_message_id)
                 self._emit(active, {"type": "message.completed", "content": interrupted_text})
                 self._emit(active, {"type": "run.stopped"})
                 return
             if final_text:
-                assistant_message_id = self._services.db().append_message(active.context.session_id, "assistant", final_text)
+                assistant_message_id = self._services.db().append_message(
+                    active.context.session_id,
+                    "assistant",
+                    final_text,
+                    codex_message_items=self._prompt_items(active),
+                )
                 self._services.persist_run_workspace_changes(active.context, assistant_message_id)
                 self._emit(active, {"type": "message.completed", "content": final_text})
             self._emit(active, {"type": "run.completed"})
         except Exception as exc:
             self._emit(active, {"type": "run.failed", "error": str(exc)})
         finally:
+            self._cancel_pending_prompts(active)
             if assistant_message_id is None:
                 self._services.persist_run_workspace_changes(active.context, None)
             active.events.put(None)

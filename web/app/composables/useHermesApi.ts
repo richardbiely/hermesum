@@ -7,6 +7,8 @@ import type {
   SessionListResponse,
   StartRunResponse,
   DeleteSessionResponse,
+  RespondRunPromptRequest,
+  RespondRunPromptResponse,
   UploadAttachmentsResponse,
   WebChatCapabilitiesResponse,
   WebChatCommandsResponse,
@@ -123,6 +125,11 @@ export function useHermesApi() {
         editedMessageId: options.editedMessageId
       }
     }),
+    respondRunPrompt: (runId: string, promptId: string, payload: RespondRunPromptRequest) =>
+      request<RespondRunPromptResponse>(`/api/web-chat/runs/${runId}/prompts/${promptId}/response`, {
+        method: 'POST',
+        body: payload
+      }),
     uploadAttachments: (files: File[], workspace?: string | null) => {
       const body = new FormData()
       for (const file of files) body.append('files', file)

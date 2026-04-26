@@ -103,7 +103,7 @@ def test_returns_session_with_messages(client):
     assert data["session"]["messageCount"] == 2
     assert data["session"]["reasoningEffort"] is None
     assert [message["role"] for message in data["messages"]] == ["user", "assistant"]
-    assert data["messages"][0]["parts"] == [{"type": "text", "text": "Can you help?", "name": None, "status": None, "input": None, "output": None, "url": None, "mediaType": None, "approvalId": None, "changes": None, "attachments": None}]
+    assert data["messages"][0]["parts"] == [{"type": "text", "text": "Can you help?", "name": None, "status": None, "input": None, "output": None, "url": None, "mediaType": None, "approvalId": None, "prompt": None, "changes": None, "attachments": None}]
     assert data["messages"][1]["parts"][0]["type"] == "reasoning"
     assert data["messages"][1]["parts"][0]["text"] == "Short reasoning"
     assert data["messages"][1]["parts"][1]["text"] == "Yes."

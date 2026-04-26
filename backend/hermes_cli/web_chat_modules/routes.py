@@ -19,6 +19,8 @@ from .models import (
     ExecuteCommandRequest,
     ExecuteCommandResponse,
     RenameSessionRequest,
+    RespondRunPromptRequest,
+    RespondRunPromptResponse,
     SaveWorkspaceRequest,
     SessionDetailResponse,
     SessionListResponse,
@@ -229,6 +231,10 @@ def register_web_chat_routes(router: APIRouter, services: WebChatRouteServices) 
     @router.get("/runs/{run_id}/events")
     def run_events(run_id: str) -> StreamingResponse:
         return StreamingResponse(services.run_manager().events(run_id), media_type="text/event-stream")
+
+    @router.post("/runs/{run_id}/prompts/{prompt_id}/response", response_model=RespondRunPromptResponse)
+    def respond_run_prompt(run_id: str, prompt_id: str, payload: RespondRunPromptRequest) -> RespondRunPromptResponse:
+        return services.run_manager().respond_prompt(run_id, prompt_id, payload)
 
     @router.post("/runs/{run_id}/stop", response_model=StopRunResponse)
     def stop_run(run_id: str) -> StopRunResponse:

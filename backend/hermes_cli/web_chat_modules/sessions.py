@@ -10,7 +10,7 @@ from fastapi import HTTPException, status
 from hermes_state import SessionDB
 
 from .attachments import attachment_with_runtime_state
-from .models import WebChatAttachment, WebChatMessage, WebChatPart, WebChatSession, WebChatWorkspaceChanges
+from .models import WebChatAttachment, WebChatMessage, WebChatPart, WebChatPrompt, WebChatSession, WebChatWorkspaceChanges
 
 
 def iso_from_epoch(value: Any) -> str:
@@ -106,11 +106,32 @@ def message_attachments(message: dict[str, Any]) -> list[WebChatAttachment]:
     return attachments
 
 
+def message_prompts(message: dict[str, Any]) -> list[WebChatPrompt]:
+    items = parse_jsonish(message.get("codex_message_items"))
+    if not isinstance(items, list):
+        return []
+
+    prompts: list[WebChatPrompt] = []
+    for item in items:
+        if not isinstance(item, dict) or item.get("type") != "web_chat_prompt":
+            continue
+        metadata = item.get("prompt")
+        if not isinstance(metadata, dict):
+            continue
+        try:
+            prompts.append(WebChatPrompt(**metadata))
+        except Exception:
+            continue
+    return prompts
+
+
 def message_parts(message: dict[str, Any]) -> list[WebChatPart]:
     parts: list[WebChatPart] = []
     attachments = message_attachments(message)
     if attachments:
         parts.append(WebChatPart(type="media", attachments=attachments))
+    for prompt in message_prompts(message):
+        parts.append(WebChatPart(type="interactive_prompt", prompt=prompt))
     if message.get("reasoning") or message.get("reasoning_content"):
         parts.append(WebChatPart(type="reasoning", text=message.get("reasoning") or message.get("reasoning_content")))
     if message.get("content") and message.get("role") != "tool":

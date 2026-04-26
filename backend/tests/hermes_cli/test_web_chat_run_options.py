@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import time
+
 from web_chat_test_helpers import git_repo
 
 
@@ -234,4 +236,9 @@ def test_invalid_reasoning_effort_falls_back_safely(client, monkeypatch, tmp_pat
     })
 
     assert response.status_code == 202, response.text
+
+    deadline = time.monotonic() + 1
+    while not seen and time.monotonic() < deadline:
+        time.sleep(0.01)
+
     assert seen == {"model": "gpt-5.4", "reasoningEffort": "none"}

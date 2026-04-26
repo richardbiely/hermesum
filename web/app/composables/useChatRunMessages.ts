@@ -1,5 +1,5 @@
 import type { ComputedRef, Ref } from 'vue'
-import type { WebChatMessage, WebChatPart } from '~/types/web-chat'
+import type { InteractivePrompt, WebChatMessage, WebChatPart } from '~/types/web-chat'
 import { toolDisplayName } from '~/utils/toolCalls'
 import { createLocalMessage } from './useHermesRunStream'
 
@@ -40,18 +40,29 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
     messages.value.push(createThinkingMessage())
   }
 
-  function appendAssistantDelta(content: string) {
-    if (!content) return
-
+  function assistantMessage() {
     let assistant = messages.value[messages.value.length - 1]
     if (!assistant || assistant.role !== 'assistant') {
       assistant = createLocalMessage('assistant', '')
       messages.value.push(assistant)
     }
+    return assistant
+  }
+
+  function removeThinkingPart(message: WebChatMessage) {
+    const thinkingIndex = message.parts.findIndex(part => part.status === 'thinking')
+    if (thinkingIndex >= 0) message.parts.splice(thinkingIndex, 1)
+  }
+
+  function appendAssistantDelta(content: string) {
+    if (!content) return
+
+    const assistant = assistantMessage()
+    removeThinkingPart(assistant)
 
     const textPart = assistant.parts.find(part => part.type === 'text')
     if (textPart) {
-      textPart.text = textPart.status === 'thinking' ? content : `${textPart.text || ''}${content}`
+      textPart.text = `${textPart.text || ''}${content}`
       textPart.status = null
     } else {
       assistant.parts.push({ type: 'text', text: content })
@@ -62,9 +73,14 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
   function replaceAssistantMessage(content?: string) {
     if (!content) return
 
-    const assistant = messages.value[messages.value.length - 1]
-    if (assistant?.role === 'assistant') {
-      assistant.parts = [{ type: 'text', text: content, status: null }]
+    const assistant = assistantMessage()
+    removeThinkingPart(assistant)
+    const textPart = assistant.parts.find(part => part.type === 'text')
+    if (textPart) {
+      textPart.text = content
+      textPart.status = null
+    } else {
+      assistant.parts.push({ type: 'text', text: content, status: null })
     }
   }
 
@@ -92,6 +108,27 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
     const assistant = [...messages.value].reverse().find(message => message.role === 'assistant')
     const toolPart = assistant?.parts.findLast(part => part.type === 'tool' && part.status === 'running' && (!payload.name || part.name === payload.name))
     if (toolPart) toolPart.status = 'completed'
+  }
+
+  function appendPrompt(prompt: InteractivePrompt) {
+    const assistant = assistantMessage()
+    removeThinkingPart(assistant)
+    const existing = assistant.parts.find(part => part.prompt?.id === prompt.id)
+    if (existing) {
+      existing.prompt = prompt
+      return
+    }
+    assistant.parts.push({ type: 'interactive_prompt', prompt })
+  }
+
+  function updatePrompt(prompt: InteractivePrompt) {
+    for (const message of messages.value) {
+      const part = message.parts.find(part => part.prompt?.id === prompt.id)
+      if (part) {
+        part.prompt = prompt
+        return
+      }
+    }
   }
 
   function connectRun(runId: string, targetSessionId = options.sessionId.value) {
@@ -122,6 +159,12 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
       },
       onToolCompleted: (payload) => {
         if (targetSessionId === options.sessionId.value) markToolCompleted(payload)
+      },
+      onPromptRequested: (prompt) => {
+        if (targetSessionId === options.sessionId.value) appendPrompt(prompt)
+      },
+      onPromptUpdated: (prompt) => {
+        if (targetSessionId === options.sessionId.value) updatePrompt(prompt)
       },
       onError: (err) => {
         if (targetSessionId !== options.sessionId.value) return

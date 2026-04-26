@@ -337,6 +337,10 @@ function isSessionRunning(session: WebChatSession) {
   return activeChatRuns.isRunning(session.id)
 }
 
+function hasPromptUnread(session: WebChatSession) {
+  return activeChatRuns.hasPromptUnread(session.id)
+}
+
 function beginRename(session: WebChatSession) {
   renameSession.value = session
   renameTitle.value = sessionTitle(session)
@@ -434,6 +438,7 @@ async function deleteSession(session: WebChatSession) {
 
 function openSession(session: WebChatSession) {
   markSessionRead(session)
+  activeChatRuns.clearPromptUnread(session.id)
   void router.push(`/chat/${session.id}`)
 }
 
@@ -521,6 +526,7 @@ provide('refreshSessions', refresh)
           :read-message-counts="readMessageCounts"
           :read-message-counts-loaded="readMessageCountsLoaded"
           :is-session-running="isSessionRunning"
+          :has-prompt-unread="hasPromptUnread"
           @edit-workspace="beginEditWorkspace"
           @start-workspace-chat="startWorkspaceChat"
           @open-session="openSession"

@@ -19,6 +19,6 @@ def client(monkeypatch, tmp_path, _isolate_hermes_home):
     project_root.mkdir()
     monkeypatch.setenv("HERMES_WEB_CHAT_PROJECT_ROOT", str(project_root))
 
-    test_client = TestClient(app)
-    test_client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
-    return test_client
+    with TestClient(app) as test_client:
+        test_client.headers[_SESSION_HEADER_NAME] = _SESSION_TOKEN
+        yield test_client

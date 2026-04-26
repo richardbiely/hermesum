@@ -4,8 +4,43 @@ declare global {
   }
 }
 
+export type InteractivePromptChoice = {
+  id: string
+  label: string
+  description?: string | null
+  style?: 'neutral' | 'primary' | 'warning' | 'error'
+}
+
+export type InteractivePrompt = {
+  id: string
+  runId: string
+  sessionId: string
+  kind: 'approval' | 'question'
+  title: string
+  description?: string | null
+  detail?: string | null
+  detailType: 'text' | 'command' | 'json'
+  choices: InteractivePromptChoice[]
+  freeText: boolean
+  status: 'pending' | 'answered' | 'expired' | 'cancelled'
+  selectedChoice?: string | null
+  responseText?: string | null
+  createdAt: string
+  answeredAt?: string | null
+  expiresAt?: string | null
+}
+
+export type RespondRunPromptRequest = {
+  choice?: string | null
+  text?: string | null
+}
+
+export type RespondRunPromptResponse = {
+  prompt: InteractivePrompt
+}
+
 export type WebChatPart = {
-  type: 'text' | 'reasoning' | 'tool' | 'media' | 'approval' | 'changes'
+  type: 'text' | 'reasoning' | 'tool' | 'media' | 'interactive_prompt' | 'changes'
   text?: string | null
   name?: string | null
   status?: string | null
@@ -14,6 +49,7 @@ export type WebChatPart = {
   url?: string | null
   mediaType?: string | null
   approvalId?: string | null
+  prompt?: InteractivePrompt | null
   changes?: WebChatWorkspaceChanges | null
   attachments?: WebChatAttachment[] | null
 }

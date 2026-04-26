@@ -56,6 +56,11 @@ const emit = defineEmits<{
         :changes="group.part.changes"
       />
 
+      <InteractivePromptCard
+        v-else-if="group.part.type === 'interactive_prompt' && group.part.prompt"
+        :prompt="group.part.prompt"
+      />
+
       <template v-else-if="group.part.type === 'text'">
         <Comark
           v-if="message.role === 'assistant'"

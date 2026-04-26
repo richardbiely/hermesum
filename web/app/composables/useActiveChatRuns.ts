@@ -1,3 +1,4 @@
+import type { InteractivePrompt } from '~/types/web-chat'
 import { playNotificationSound } from '../utils/notificationSound'
 
 type RunEventPayload = Record<string, unknown>
@@ -7,6 +8,8 @@ type ActiveRunHandlers = {
   onCompleted?: (content?: string) => void
   onToolStarted?: (payload: { name?: string, preview?: string, input?: unknown }) => void
   onToolCompleted?: (payload: { name?: string }) => void
+  onPromptRequested?: (prompt: InteractivePrompt) => void
+  onPromptUpdated?: (prompt: InteractivePrompt) => void
   onError?: (error: Error) => void
   onFinished?: () => void
 }
@@ -55,8 +58,14 @@ function isActiveVisibleChat(sessionId: string) {
   return !document.hidden && document.hasFocus() && window.location.pathname === `/chat/${sessionId}`
 }
 
+function promptFromPayload(payload: RunEventPayload) {
+  const prompt = payload.prompt
+  return prompt && typeof prompt === 'object' ? prompt as InteractivePrompt : null
+}
+
 export function useActiveChatRuns() {
   const runningSessionIds = useState<string[]>('active-chat-run-session-ids', () => [])
+  const promptUnreadSessionIds = useState<string[]>('active-chat-prompt-unread-session-ids', () => [])
 
   function markRunning(sessionId: string) {
     if (!runningSessionIds.value.includes(sessionId)) {
@@ -70,6 +79,20 @@ export function useActiveChatRuns() {
 
   function isRunning(sessionId: string) {
     return runningSessionIds.value.includes(sessionId)
+  }
+
+  function markPromptUnread(sessionId: string) {
+    if (!promptUnreadSessionIds.value.includes(sessionId)) {
+      promptUnreadSessionIds.value = [...promptUnreadSessionIds.value, sessionId]
+    }
+  }
+
+  function clearPromptUnread(sessionId: string) {
+    promptUnreadSessionIds.value = promptUnreadSessionIds.value.filter(id => id !== sessionId)
+  }
+
+  function hasPromptUnread(sessionId: string) {
+    return promptUnreadSessionIds.value.includes(sessionId)
   }
 
   function finishRun(run: TrackedRun) {
@@ -124,6 +147,26 @@ export function useActiveChatRuns() {
       }))
     })
 
+    source.addEventListener('prompt.requested', (event) => {
+      const payload = parsePayload(event)
+      const prompt = promptFromPayload(payload)
+      if (!prompt) return
+      if (!isActiveVisibleChat(run.sessionId)) markPromptUnread(run.sessionId)
+      playNotificationSound(isActiveVisibleChat(run.sessionId) ? 'default' : 'attention')
+      notify(run, subscriber => subscriber.onPromptRequested?.(prompt))
+    })
+
+    const updatePrompt = (event: Event) => {
+      const payload = parsePayload(event)
+      const prompt = promptFromPayload(payload)
+      if (!prompt) return
+      notify(run, subscriber => subscriber.onPromptUpdated?.(prompt))
+    }
+
+    source.addEventListener('prompt.answered', updatePrompt)
+    source.addEventListener('prompt.expired', updatePrompt)
+    source.addEventListener('prompt.cancelled', updatePrompt)
+
     source.addEventListener('run.completed', () => finishRun(run))
     source.addEventListener('run.stopped', () => finishRun(run))
 
@@ -173,9 +216,13 @@ export function useActiveChatRuns() {
 
   return {
     runningSessionIds,
+    promptUnreadSessionIds,
     markRunning,
     markFinished,
     isRunning,
+    markPromptUnread,
+    clearPromptUnread,
+    hasPromptUnread,
     trackRun,
     subscribe,
     stop,
