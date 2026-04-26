@@ -209,6 +209,38 @@ def test_managed_workspaces_are_stored_in_project_hermes_settings(client, tmp_pa
     ]
 
 
+def test_existing_project_settings_workspace_paths_are_normalized(client, tmp_path, monkeypatch):
+    project = tmp_path / "settings-project"
+    home = tmp_path / "home"
+    workspace = home / "Sites" / "hermesum"
+    project.mkdir()
+    workspace.mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("HERMES_WEB_CHAT_PROJECT_ROOT", str(project))
+
+    settings_path = project / ".hermes" / "web-chat" / "settings.json"
+    settings_path.parent.mkdir(parents=True)
+    settings_path.write_text(
+        json.dumps({
+            "version": 1,
+            "workspaces": [{"id": "workspace-id", "label": "Hermesum", "path": "~/Sites/hermesum"}],
+        }),
+        encoding="utf-8",
+    )
+
+    response = client.get("/api/web-chat/workspaces")
+
+    assert response.status_code == 200
+    assert response.json()["workspaces"] == [
+        {
+            "id": "workspace-id",
+            "label": "Hermesum",
+            "path": str(workspace.resolve()),
+            "active": False,
+        }
+    ]
+
+
 def test_migrates_legacy_session_db_workspaces_to_project_settings(client, tmp_path, monkeypatch):
     from hermes_state import SessionDB
     from hermes_cli import web_chat

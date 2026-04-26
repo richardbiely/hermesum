@@ -125,7 +125,11 @@ def workspace_entries(settings: dict[str, Any]) -> list[dict[str, str]]:
         if not isinstance(item, dict):
             continue
         try:
-            entries.append({"id": str(item["id"]), "label": str(item["label"]), "path": str(item["path"])})
+            entries.append({
+                "id": str(item["id"]),
+                "label": str(item["label"]),
+                "path": str(Path(str(item["path"])).expanduser().resolve()),
+            })
         except KeyError:
             continue
     return entries
