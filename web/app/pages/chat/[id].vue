@@ -259,7 +259,13 @@ onBeforeUnmount(() => {
         </div>
 
         <template v-else>
-          <UChatMessages :messages="messages" :status="chatStatus">
+          <UChatMessages
+            :messages="messages"
+            :status="chatStatus"
+            :shouldAutoScroll="true"
+            :shouldScrollToBottom="true"
+            :autoScroll="true"
+          >
             <template #content="{ message }: { message: WebChatMessage }">
               <ChatMessageContent
                 v-model:editing-text="editingText"
