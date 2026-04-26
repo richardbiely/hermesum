@@ -10,7 +10,7 @@ Do **not** edit `$HOME/.hermes/hermes-agent` directly during prototype work. Tre
 backend/
   hermes_cli/web_chat.py                    # FastAPI router entrypoint and domain orchestration
   hermes_cli/web_chat_modules/              # extracted web-chat agent execution, capabilities, profiles, commands, models, sessions, session/message mutations, git changes, workspace, attachment, and run lifecycle helpers
-  tests/hermes_cli/test_web_chat.py         # proposed pytest coverage
+  tests/hermes_cli/test_web_chat*.py        # web-chat pytest coverage split by domain
 web/                                        # Nuxt UI prototype
   app/components/WorkspaceModal.vue         # workspace create/edit modal
   app/components/SidebarSessionGroups.vue   # sidebar workspace groups and chat row actions
