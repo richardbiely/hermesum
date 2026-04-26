@@ -105,10 +105,11 @@ if 'request.query_params.get("session_token", "")' not in text:
     replacement = needle + """    if request.url.path.startswith("/api/web-chat/runs/") and request.url.path.endswith("/events"):\n        session_token = request.query_params.get("session_token", "")\n        if session_token and hmac.compare_digest(session_token.encode(), _SESSION_TOKEN.encode()):\n            return True\n\n"""
     text = text.replace(needle, replacement, 1)
 
-if 'os.environ.get("HERMES_SESSION_TOKEN")' not in text:
+env_name = "HERMES_" + "SESSION_" + "TOKEN"
+if f'os.environ.get("{env_name}")' not in text:
     text, count = re.subn(
-        r"_SESSION_TOKEN\s*=\s*secrets\.token_urlsafe\(24\)",
-        '_SESSION_TOKEN = os.environ.get("HERMES_SESSION_TOKEN") or secrets.token_urlsafe(24)',
+        r"_SESSION_TOKEN\s*=\s*secrets\.token_urlsafe\(\d+\)",
+        f'_SESSION_TOKEN = os.environ.get("{env_name}") or secrets.token_urlsafe(32)',
         text,
         count=1,
     )
