@@ -54,6 +54,20 @@ export type WebChatCapabilitiesResponse = {
   models: WebChatModelCapability[]
 }
 
+export type WebChatCommand = {
+  id: string
+  name: string
+  description: string
+  usage: string
+  safety: 'safe' | 'confirmation_required' | 'blocked'
+  requiresWorkspace: boolean
+  requiresSession: boolean
+}
+
+export type WebChatCommandsResponse = {
+  commands: WebChatCommand[]
+}
+
 export type WebChatProfile = {
   id: string
   label: string
@@ -147,6 +161,22 @@ export type SessionListResponse = {
 export type SessionDetailResponse = {
   session: WebChatSession
   messages: WebChatMessage[]
+}
+
+export type ExecuteCommandRequest = {
+  command: string
+  sessionId?: string
+  workspace?: string | null
+  model?: string | null
+  reasoningEffort?: string | null
+}
+
+export type ExecuteCommandResponse = {
+  commandId: string
+  handled: boolean
+  sessionId?: string | null
+  message?: WebChatMessage | null
+  changes?: WebChatWorkspaceChanges | null
 }
 
 export type StartRunResponse = {

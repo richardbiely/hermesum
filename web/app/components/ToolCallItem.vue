@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { WebChatPart } from '~/types/web-chat'
+import { toolDisplayName } from '~/utils/toolCalls'
 
 const props = defineProps<{
   part: WebChatPart
@@ -12,7 +13,7 @@ type DetailSection = {
   type: string
 }
 
-const toolName = computed(() => props.part.name || 'Tool call')
+const toolName = computed(() => toolDisplayName(props.part))
 const isRunning = computed(() => ['running', 'thinking', 'streaming', 'started'].includes(String(props.part.status || '')))
 const copiedSection = ref<string | null>(null)
 const wrappedSections = ref<Record<string, boolean>>({})

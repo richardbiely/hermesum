@@ -1,5 +1,7 @@
 import type {
   DirectorySuggestionsResponse,
+  ExecuteCommandRequest,
+  ExecuteCommandResponse,
   SaveWorkspaceRequest,
   SessionDetailResponse,
   SessionListResponse,
@@ -7,6 +9,7 @@ import type {
   DeleteSessionResponse,
   UploadAttachmentsResponse,
   WebChatCapabilitiesResponse,
+  WebChatCommandsResponse,
   WebChatProfilesResponse,
   SwitchProfileResponse,
   WebChatWorkspaceResponse,
@@ -46,6 +49,11 @@ export function useHermesApi() {
 
   return {
     getCapabilities: () => request<WebChatCapabilitiesResponse>('/api/web-chat/capabilities'),
+    getCommands: () => request<WebChatCommandsResponse>('/api/web-chat/commands'),
+    executeCommand: (payload: ExecuteCommandRequest) => request<ExecuteCommandResponse>('/api/web-chat/commands/execute', {
+      method: 'POST',
+      body: payload
+    }),
     getProfiles: () => request<WebChatProfilesResponse>('/api/web-chat/profiles'),
     switchProfile: (profile: string) => request<SwitchProfileResponse>('/api/web-chat/profiles/active', {
       method: 'POST',

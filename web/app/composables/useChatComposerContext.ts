@@ -1,4 +1,5 @@
 import type { WebChatAttachment, WebChatSession, WebChatWorkspace } from '~/types/web-chat'
+import { resolveSelectedWorkspace } from '~/utils/workspaceSelection'
 
 const SELECTED_WORKSPACE_KEY = 'hermes-chat-selected-workspace'
 
@@ -24,13 +25,12 @@ export function useChatComposerContext() {
   const contextError = useState<Error | undefined>('chat-composer-context-error', () => undefined)
 
   function reconcileWorkspace(preferredWorkspace?: string | null) {
-    const preferred = workspaces.value.find(workspace => workspace.path === preferredWorkspace)?.path
-    const persisted = storedValue(SELECTED_WORKSPACE_KEY)
-    const selected = preferred
-      || workspaces.value.find(workspace => workspace.path === persisted)?.path
-      || workspaces.value.find(workspace => workspace.path === selectedWorkspace.value)?.path
-      || null
-    selectedWorkspace.value = selected
+    selectedWorkspace.value = resolveSelectedWorkspace({
+      workspaces: workspaces.value,
+      preferredWorkspace,
+      persistedWorkspace: storedValue(SELECTED_WORKSPACE_KEY),
+      currentWorkspace: selectedWorkspace.value
+    })
   }
 
   async function loadWorkspaces(preferredWorkspace?: string | null) {

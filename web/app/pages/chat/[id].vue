@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import highlight from '@comark/nuxt/plugins/highlight'
 import { prepareNotificationSound } from '../../utils/notificationSound'
-import type { WebChatMessage, WebChatPart } from '~/types/web-chat'
+import { requiresWorkspaceBeforeSubmit } from '../../utils/slashCommands'
+import type { ExecuteCommandResponse, WebChatCommand, WebChatMessage, WebChatPart } from '~/types/web-chat'
+import { toolDisplayName } from '~/utils/toolCalls'
 
 type MessagePartGroup =
   | { type: 'tools', parts: WebChatPart[] }
@@ -14,6 +16,7 @@ const activeChatRuns = useActiveChatRuns()
 const context = useChatComposerContext()
 const toast = useToast()
 const input = ref('')
+const slashCommands = useSlashCommands({ input })
 const messages = ref<WebChatMessage[]>([])
 const bottomRef = ref<HTMLElement | null>(null)
 const autoScrollEnabled = ref(true)
@@ -250,12 +253,14 @@ function appendToolStarted(payload: { name?: string, preview?: string, input?: u
   const thinkingIndex = assistant.parts.findIndex(part => part.status === 'thinking')
   if (thinkingIndex >= 0) assistant.parts.splice(thinkingIndex, 1)
 
-  assistant.parts.push({
+  const toolPart: WebChatPart = {
     type: 'tool',
-    name: payload.name || 'Tool call',
+    name: payload.name,
     status: 'running',
     input: payload.input ?? payload.preview ?? null
-  })
+  }
+  toolPart.name = toolDisplayName(toolPart)
+  assistant.parts.push(toolPart)
   scheduleAutoScroll()
 }
 
@@ -332,6 +337,11 @@ function showError(err: unknown, fallback: string) {
   toast.add({ color: 'error', title: fallback, description: message })
 }
 
+function showCommandError(err: unknown, commandText: string) {
+  const message = getHermesErrorMessage(err, 'Command failed')
+  toast.add({ color: 'warning', title: commandText, description: message })
+}
+
 async function attachFiles(files: File[]) {
   try {
     await context.uploadFiles(files)
@@ -346,8 +356,6 @@ function showVoiceError(message: string) {
 
 async function stopRun() {
   await activeChatRuns.stop(sessionId.value)
-  activeChatRuns.markFinished(sessionId.value)
-  submitStatus.value = 'ready'
 }
 
 function messageAttachmentIds(message: WebChatMessage) {
@@ -358,6 +366,88 @@ function messageAttachmentIds(message: WebChatMessage) {
 
 function setEditingMessageContainer(el: unknown) {
   editingMessageContainer.value = el instanceof HTMLElement ? el : null
+}
+
+function appendCommandResponse(commandText: string, response: ExecuteCommandResponse) {
+  messages.value.push({
+    id: `command-user-${Date.now()}`,
+    role: 'user',
+    createdAt: new Date().toISOString(),
+    parts: [{ type: 'text', text: commandText }]
+  })
+  if (response.message) {
+    if (response.changes) response.message.parts.push({ type: 'changes', changes: response.changes })
+    messages.value.push(response.message)
+  }
+  scheduleAutoScroll()
+}
+
+function shouldBlockForMissingWorkspace(message: string) {
+  if (!requiresWorkspaceBeforeSubmit(message, context.selectedWorkspace.value)) return false
+  workspaceInvalidSignal.value += 1
+  return true
+}
+
+async function executeSlashCommand(commandText: string) {
+  if (shouldBlockForMissingWorkspace(commandText)) return false
+
+  streamError.value = undefined
+  try {
+    const response = await api.executeCommand({
+      command: commandText,
+      sessionId: sessionId.value,
+      workspace: context.selectedWorkspace.value,
+      model: composer.selectedModel.value,
+      reasoningEffort: composer.selectedReasoningEffort.value
+    })
+    appendCommandResponse(commandText, response)
+  } catch (err) {
+    showCommandError(err, commandText)
+  }
+  return true
+}
+
+async function submitSlashCommandIfNeeded(message: string) {
+  if (!message.startsWith('/')) return false
+  await slashCommands.loadCommands()
+  const command = slashCommands.exactCommand(message)
+  if (!command) return false
+  const executed = await executeSlashCommand(command.name)
+  if (executed) input.value = ''
+  return true
+}
+
+async function selectSlashCommand(command: WebChatCommand) {
+  input.value = command.name
+  const executed = await executeSlashCommand(command.name)
+  if (executed) input.value = ''
+}
+
+function onPromptArrowDown(event: KeyboardEvent) {
+  if (!slashCommands.isOpen.value) return
+  event.preventDefault()
+  slashCommands.moveHighlight(1)
+}
+
+function onPromptArrowUp(event: KeyboardEvent) {
+  if (!slashCommands.isOpen.value) return
+  event.preventDefault()
+  slashCommands.moveHighlight(-1)
+}
+
+function onPromptEscape(event: KeyboardEvent) {
+  if (!slashCommands.isOpen.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  slashCommands.close()
+}
+
+function onPromptEnter(event: KeyboardEvent) {
+  if (!slashCommands.isOpen.value) return
+  const command = slashCommands.highlightedCommand()
+  if (!command) return
+  event.preventDefault()
+  selectSlashCommand(command)
 }
 
 function resetEditingTextareaLayout() {
@@ -471,10 +561,8 @@ async function saveEditedMessage(message: WebChatMessage) {
 async function onSubmit() {
   const message = input.value.trim()
   if (!message || activeChatRuns.isRunning(sessionId.value) || submitStatus.value === 'submitted') return
-  if (!context.selectedWorkspace.value) {
-    workspaceInvalidSignal.value += 1
-    return
-  }
+  if (shouldBlockForMissingWorkspace(message)) return
+  if (await submitSlashCommandIfNeeded(message)) return
 
   const pendingAttachments = [...context.attachments.value]
   void prepareNotificationSound()
@@ -676,6 +764,10 @@ onBeforeUnmount(() => {
           :class="isLoadingSession ? 'pointer-events-none invisible' : undefined"
           :error="error || context.contextError.value"
           @submit="onSubmit"
+          @keydown.down="onPromptArrowDown"
+          @keydown.up="onPromptArrowUp"
+          @keydown.esc="onPromptEscape"
+          @keydown.enter="onPromptEnter"
         >
           <template #footer>
             <ChatPromptFooter
@@ -690,6 +782,10 @@ onBeforeUnmount(() => {
               :selected-model="composer.selectedModel.value"
               :selected-reasoning-effort="composer.selectedReasoningEffort.value"
               :capabilities-loading="composer.capabilitiesLoading.value"
+              :slash-commands="slashCommands.filteredCommands.value"
+              :slash-commands-open="slashCommands.isOpen.value"
+              :slash-commands-loading="slashCommands.loading.value"
+              :highlighted-slash-command-index="slashCommands.highlightedIndex.value"
               @stop="stopRun"
               @update-selected-workspace="context.selectWorkspace"
               @attach-files="attachFiles"
@@ -698,6 +794,8 @@ onBeforeUnmount(() => {
               @voice-error="showVoiceError"
               @update-selected-model="composer.selectedModel.value = $event"
               @update-selected-reasoning-effort="composer.selectedReasoningEffort.value = $event"
+              @select-slash-command="selectSlashCommand"
+              @highlight-slash-command="slashCommands.highlightedIndex.value = $event"
             />
           </template>
         </UChatPrompt>

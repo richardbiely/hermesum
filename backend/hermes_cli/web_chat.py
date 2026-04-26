@@ -101,6 +101,36 @@ class WebChatCapabilitiesResponse(BaseModel):
     models: list[WebChatModelCapability]
 
 
+class WebChatCommand(BaseModel):
+    id: str
+    name: str
+    description: str
+    usage: str
+    safety: Literal["safe", "confirmation_required", "blocked"] = "safe"
+    requiresWorkspace: bool = False
+    requiresSession: bool = False
+
+
+class WebChatCommandsResponse(BaseModel):
+    commands: list[WebChatCommand]
+
+
+class ExecuteCommandRequest(BaseModel):
+    command: str = Field(min_length=1, max_length=120)
+    sessionId: str | None = None
+    workspace: str | None = None
+    model: str | None = None
+    reasoningEffort: str | None = None
+
+
+class ExecuteCommandResponse(BaseModel):
+    commandId: str
+    handled: bool = True
+    sessionId: str | None = None
+    message: WebChatMessage | None = None
+    changes: "WebChatWorkspaceChanges | None" = None
+
+
 class WebChatFileChange(BaseModel):
     path: str
     status: str
@@ -234,6 +264,7 @@ class RunContext:
     enabled_toolsets: list[str] | None = None
     baseline_git_status: str | None = None
     stop_requested: threading.Event = field(default_factory=threading.Event)
+    interrupt_agent: Callable[[str | None], None] | None = None
 
 
 @dataclass
@@ -355,6 +386,8 @@ class RunManager:
     def stop(self, run_id: str) -> StopRunResponse:
         active = self._get(run_id)
         active.context.stop_requested.set()
+        if active.context.interrupt_agent:
+            active.context.interrupt_agent("Chat interrupted by user")
         active.events.put({"type": "run.stopping", "runId": run_id})
         return StopRunResponse(runId=run_id, stopped=True)
 
@@ -378,6 +411,10 @@ class RunManager:
         try:
             final_text = self._executor(active.context, lambda event: self._emit(active, event))
             if active.context.stop_requested.is_set():
+                interrupted_text = "Chat interrupted."
+                assistant_message_id = _db().append_message(active.context.session_id, "assistant", interrupted_text)
+                _persist_run_workspace_changes(active.context, assistant_message_id)
+                self._emit(active, {"type": "message.completed", "content": interrupted_text})
                 self._emit(active, {"type": "run.stopped"})
                 return
             if final_text:
@@ -428,13 +465,13 @@ def _agent_executor(context: RunContext, emit: Callable[[dict[str, Any]], None])
         if text:
             emit({"type": "reasoning.delta", "content": text})
 
-    def tool_progress(kind: str, tool_name: str | None = None, preview: str | None = None, args: Any | None = None) -> None:
+    def tool_progress(kind: str, tool_name: str | None = None, preview: str | None = None, args: Any | None = None, **_: Any) -> None:
         if kind not in {"tool.started", "tool.completed"}:
             return
 
         emit({
             "type": kind,
-            "name": tool_name or "Tool call",
+            "name": tool_name,
             "preview": preview,
             "input": args,
         })
@@ -465,6 +502,7 @@ def _agent_executor(context: RunContext, emit: Callable[[dict[str, Any]], None])
         reasoning_callback=reasoning_delta,
         tool_progress_callback=tool_progress,
     )
+    context.interrupt_agent = getattr(agent, "interrupt", None)
 
     prompt = context.input
     if context.workspace:
@@ -1404,6 +1442,152 @@ def _iso_from_epoch(value: Any) -> str:
     return datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
 
 
+def _iso_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _web_chat_commands() -> list[WebChatCommand]:
+    return [
+        WebChatCommand(
+            id="help",
+            name="/help",
+            description="Show available slash commands.",
+            usage="/help",
+        ),
+        WebChatCommand(
+            id="status",
+            name="/status",
+            description="Show current chat, model, and workspace status.",
+            usage="/status",
+        ),
+        WebChatCommand(
+            id="changes",
+            name="/changes",
+            description="Show current workspace changes.",
+            usage="/changes",
+            requiresWorkspace=True,
+        ),
+        WebChatCommand(
+            id="clear",
+            name="/clear",
+            description="Clear the current chat after confirmation.",
+            usage="/clear",
+            safety="confirmation_required",
+            requiresSession=True,
+        ),
+    ]
+
+
+def _web_chat_command(command_id: str) -> WebChatCommand:
+    normalized = command_id.removeprefix("/").strip().lower()
+    for command in _web_chat_commands():
+        if command.id == normalized:
+            return command
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Command not found")
+
+
+def _transient_assistant_message(text: str) -> WebChatMessage:
+    return WebChatMessage(
+        id=f"command-{uuid4().hex}",
+        role="assistant",
+        parts=[WebChatPart(type="text", text=text)],
+        createdAt=_iso_now(),
+    )
+
+
+def _execute_help_command() -> ExecuteCommandResponse:
+    lines = ["Available slash commands:"]
+    for command in _web_chat_commands():
+        if command.safety == "blocked":
+            continue
+        suffix = " (requires confirmation)" if command.safety == "confirmation_required" else ""
+        lines.append(f"- {command.name} — {command.description}{suffix}")
+    return ExecuteCommandResponse(commandId="help", message=_transient_assistant_message("\n".join(lines)))
+
+
+def _execute_status_command(request: ExecuteCommandRequest) -> ExecuteCommandResponse:
+    workspace = request.workspace or "No workspace selected"
+    model = request.model or "Default model"
+    reasoning = request.reasoningEffort or "Default reasoning"
+    session = request.sessionId or "New chat"
+    text = "\n".join([
+        "Chat status:",
+        f"- Session: {session}",
+        f"- Workspace: {workspace}",
+        f"- Model: {model}",
+        f"- Reasoning: {reasoning}",
+    ])
+    return ExecuteCommandResponse(commandId="status", message=_transient_assistant_message(text))
+
+
+def _execute_changes_command(request: ExecuteCommandRequest) -> ExecuteCommandResponse:
+    if not request.workspace:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Select a workspace before running /changes.")
+    workspace = _validate_workspace(request.workspace)
+    changes = _workspace_changes(str(workspace))
+    return ExecuteCommandResponse(
+        commandId="changes",
+        message=_transient_assistant_message("Workspace changes:"),
+        changes=changes,
+    )
+
+
+def _execute_web_chat_command(request: ExecuteCommandRequest) -> ExecuteCommandResponse:
+    command = _web_chat_command(request.command.split()[0])
+    if command.safety == "blocked":
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Command is blocked.")
+    if command.safety == "confirmation_required":
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="This command requires confirmation.")
+    if command.id == "help":
+        return _execute_help_command()
+    if command.id == "status":
+        return _execute_status_command(request)
+    if command.id == "changes":
+        return _execute_changes_command(request)
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Command not found")
+
+
+def _message_text(message: WebChatMessage) -> str:
+    return "\n\n".join(part.text for part in message.parts if part.type == "text" and part.text)
+
+
+def _persist_command_exchange(request: ExecuteCommandRequest, response: ExecuteCommandResponse) -> ExecuteCommandResponse:
+    if not response.message:
+        return response
+
+    db = _db()
+    session_id = request.sessionId or uuid4().hex
+    if request.sessionId:
+        _get_session_or_404(db, session_id)
+    else:
+        model_config = {"workspace": request.workspace} if request.workspace else None
+        db.create_session(session_id, source=WEB_CHAT_SOURCE, model=request.model, model_config=model_config)
+        db.set_session_title(session_id, _title_from_message(request.command.strip()))
+
+    db.append_message(session_id, "user", request.command.strip())
+    assistant_message_id = db.append_message(session_id, "assistant", _message_text(response.message))
+
+    if response.changes and response.changes.files and request.workspace:
+        workspace = str(_validate_workspace(request.workspace))
+        _record_session_git_changes(
+            db,
+            session_id=session_id,
+            run_id=None,
+            message_id=assistant_message_id,
+            workspace=workspace,
+            baseline_status=None,
+            final_status=_git_status_porcelain(workspace) or "",
+            changes=response.changes,
+        )
+
+    messages = db.get_messages(session_id)
+    persisted = next((message for message in messages if message.get("id") == assistant_message_id), None)
+    if persisted:
+        response.message = _serialize_message(persisted)
+    response.sessionId = session_id
+    return response
+
+
 def _title_from_message(message: str) -> str:
     text = " ".join(message.split())
     return text[:80] or "New chat"
@@ -1950,6 +2134,16 @@ def list_sessions(
     db = _db()
     sessions = _list_non_empty_sessions(db, limit=limit, offset=offset)
     return SessionListResponse(sessions=[_serialize_session(session) for session in sessions])
+
+
+@router.get("/commands", response_model=WebChatCommandsResponse)
+def list_commands() -> WebChatCommandsResponse:
+    return WebChatCommandsResponse(commands=_web_chat_commands())
+
+
+@router.post("/commands/execute", response_model=ExecuteCommandResponse, response_model_exclude_none=True)
+def execute_command(payload: ExecuteCommandRequest) -> ExecuteCommandResponse:
+    return _persist_command_exchange(payload, _execute_web_chat_command(payload))
 
 
 @router.get("/capabilities", response_model=WebChatCapabilitiesResponse)

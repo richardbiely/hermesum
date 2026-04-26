@@ -26,6 +26,10 @@ Keep `README.md` updated as the prototype changes, including project structure, 
 - `POST /api/web-chat/attachments`
 - `GET /api/web-chat/attachments/{attachment_id}`
 - `GET /api/web-chat/attachments/{attachment_id}/content`
+- `GET /api/web-chat/commands`
+- `POST /api/web-chat/commands/execute`
+
+Slash commands are backed by a small backend allowlist. Implemented commands are `/help`, `/status`, and `/changes`; `/clear` is advertised as confirmation-required but is not executed until a confirmation UX exists. Slash commands do not run arbitrary shell commands, and mutating or dangerous commands must remain blocked unless they have explicit backend validation and confirmation.
 
 Chat attachments uploaded through the web UI are stored in the selected project under `.hermes/attachments/`, which is ignored by git in this prototype. Existing filenames are preserved when possible and automatically suffixed instead of overwritten. Image attachments render as inline thumbnails with a larger preview; other files open inline through the authenticated content endpoint when the browser supports their MIME type. Persisted attachment URLs include workspace context on the client side so previews can still be fetched after backend/runtime state is reset. Deleted files remain visible in chat history as unavailable placeholders; deleting a chat does not remove attachment files. Current limits are 8 files per upload request and 25 MB per file.
 
@@ -39,6 +43,7 @@ The run executor is intentionally injectable. The current default emits a placeh
 - Chat detail page using `UChatMessages`, `UChatPrompt`, `UChatPromptSubmit`, `UChatReasoning`, `UChatTool`, and `Comark`.
 - EventSource/SSE composable for run streaming and stop handling.
 - Authenticated `$fetch` helper using injected `window.__HERMES_SESSION_TOKEN__`.
+- Slash-command autocomplete in the chat composer when the message starts with `/`.
 
 ## Development workflow
 

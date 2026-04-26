@@ -1,5 +1,7 @@
 <script setup lang="ts">
+import { requiresWorkspaceBeforeSubmit } from '../utils/slashCommands'
 import { prepareNotificationSound } from '../utils/notificationSound'
+import type { WebChatCommand } from '~/types/web-chat'
 
 const input = ref('')
 const loading = ref(false)
@@ -12,6 +14,7 @@ const composer = useChatComposerCapabilities()
 const activeChatRuns = useActiveChatRuns()
 const context = useChatComposerContext()
 const toast = useToast()
+const slashCommands = useSlashCommands({ input })
 
 await Promise.all([composer.initializeForNewChat(), context.initialize()])
 
@@ -37,13 +40,89 @@ function showVoiceError(message: string) {
   showError(new Error(message), 'Voice input failed')
 }
 
+function showCommandError(err: unknown, commandText: string) {
+  const message = getHermesErrorMessage(err, 'Command failed')
+  toast.add({ color: 'warning', title: commandText, description: message })
+}
+
+function shouldBlockForMissingWorkspace(message: string) {
+  if (!requiresWorkspaceBeforeSubmit(message, context.selectedWorkspace.value)) return false
+  workspaceInvalidSignal.value += 1
+  return true
+}
+
+async function executeSlashCommand(commandText: string) {
+  if (shouldBlockForMissingWorkspace(commandText)) return false
+
+  error.value = undefined
+  try {
+    const response = await api.executeCommand({
+      command: commandText,
+      workspace: context.selectedWorkspace.value,
+      model: composer.selectedModel.value,
+      reasoningEffort: composer.selectedReasoningEffort.value
+    })
+    if (response.sessionId) {
+      await refreshSessions?.()
+      await router.push({ path: `/chat/${response.sessionId}` })
+      return true
+    }
+    const text = response.message?.parts.find(part => part.type === 'text')?.text || 'Command completed.'
+    toast.add({ title: commandText, description: text })
+  } catch (err) {
+    showCommandError(err, commandText)
+  }
+  return true
+}
+
+async function submitSlashCommandIfNeeded(message: string) {
+  if (!message.startsWith('/')) return false
+  await slashCommands.loadCommands()
+  const command = slashCommands.exactCommand(message)
+  if (!command) return false
+  const executed = await executeSlashCommand(command.name)
+  if (executed) input.value = ''
+  return true
+}
+
+async function selectSlashCommand(command: WebChatCommand) {
+  input.value = command.name
+  const executed = await executeSlashCommand(command.name)
+  if (executed) input.value = ''
+}
+
+function onPromptArrowDown(event: KeyboardEvent) {
+  if (!slashCommands.isOpen.value) return
+  event.preventDefault()
+  slashCommands.moveHighlight(1)
+}
+
+function onPromptArrowUp(event: KeyboardEvent) {
+  if (!slashCommands.isOpen.value) return
+  event.preventDefault()
+  slashCommands.moveHighlight(-1)
+}
+
+function onPromptEscape(event: KeyboardEvent) {
+  if (!slashCommands.isOpen.value) return
+  event.preventDefault()
+  event.stopPropagation()
+  slashCommands.close()
+}
+
+function onPromptEnter(event: KeyboardEvent) {
+  if (!slashCommands.isOpen.value) return
+  const command = slashCommands.highlightedCommand()
+  if (!command) return
+  event.preventDefault()
+  selectSlashCommand(command)
+}
+
 async function onSubmit() {
   const message = input.value.trim()
   if (!message || loading.value) return
-  if (!context.selectedWorkspace.value) {
-    workspaceInvalidSignal.value += 1
-    return
-  }
+  if (shouldBlockForMissingWorkspace(message)) return
+  if (await submitSlashCommandIfNeeded(message)) return
 
   loading.value = true
   error.value = undefined
@@ -82,7 +161,15 @@ async function onSubmit() {
             <p class="text-muted">Start a native web chat session backed by Hermes Agent.</p>
           </div>
 
-          <UChatPrompt v-model="input" :error="error || context.contextError.value" @submit="onSubmit">
+          <UChatPrompt
+            v-model="input"
+            :error="error || context.contextError.value"
+            @submit="onSubmit"
+            @keydown.down="onPromptArrowDown"
+            @keydown.up="onPromptArrowUp"
+            @keydown.esc="onPromptEscape"
+            @keydown.enter="onPromptEnter"
+          >
             <template #footer>
               <ChatPromptFooter
                 :submit-status="loading ? 'submitted' : 'ready'"
@@ -96,6 +183,10 @@ async function onSubmit() {
                 :selected-model="composer.selectedModel.value"
                 :selected-reasoning-effort="composer.selectedReasoningEffort.value"
                 :capabilities-loading="composer.capabilitiesLoading.value"
+                :slash-commands="slashCommands.filteredCommands.value"
+                :slash-commands-open="slashCommands.isOpen.value"
+                :slash-commands-loading="slashCommands.loading.value"
+                :highlighted-slash-command-index="slashCommands.highlightedIndex.value"
                 @update-selected-workspace="context.selectWorkspace"
                 @attach-files="attachFiles"
                 @remove-attachment="context.removeAttachment"
@@ -103,6 +194,8 @@ async function onSubmit() {
                 @voice-error="showVoiceError"
                 @update-selected-model="composer.selectedModel.value = $event"
                 @update-selected-reasoning-effort="composer.selectedReasoningEffort.value = $event"
+                @select-slash-command="selectSlashCommand"
+                @highlight-slash-command="slashCommands.highlightedIndex.value = $event"
               />
             </template>
           </UChatPrompt>
