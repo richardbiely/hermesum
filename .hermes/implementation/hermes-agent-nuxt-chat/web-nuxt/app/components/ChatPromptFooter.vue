@@ -1,21 +1,30 @@
 <script setup lang="ts">
+import type { DropdownMenuItem } from '@nuxt/ui'
+import type { WebChatModelCapability } from '~/types/web-chat'
+
 type ChatPromptFooterProps = {
   submitStatus: 'ready' | 'submitted' | 'streaming' | 'error'
   profileLabel?: string
   projectLabel?: string
-  modelLabel?: string
-  reasoningLabel?: string
+  models?: WebChatModelCapability[]
+  selectedModel?: string | null
+  selectedReasoningEffort?: string | null
+  capabilitiesLoading?: boolean
 }
 
 const props = withDefaults(defineProps<ChatPromptFooterProps>(), {
   profileLabel: 'Hermes',
   projectLabel: 'hermesum',
-  modelLabel: 'GPT-5.5',
-  reasoningLabel: 'medium'
+  models: () => [],
+  selectedModel: null,
+  selectedReasoningEffort: null,
+  capabilitiesLoading: false
 })
 
 const emit = defineEmits<{
   stop: []
+  updateSelectedModel: [model: string]
+  updateSelectedReasoningEffort: [reasoningEffort: string]
 }>()
 
 const mockButtons = [
@@ -23,12 +32,41 @@ const mockButtons = [
   { label: 'Dictate by voice', icon: 'i-lucide-mic' }
 ]
 
-const selectors = computed(() => [
-  { label: props.profileLabel, icon: 'i-lucide-user-round', ariaLabel: 'Hermes profile' },
-  { label: props.projectLabel, icon: 'i-lucide-folder', ariaLabel: 'Project or directory' },
-  { label: props.modelLabel, icon: 'i-lucide-cpu', ariaLabel: 'Model' },
-  { label: props.reasoningLabel, icon: 'i-lucide-brain', ariaLabel: 'Reasoning effort' }
-])
+const selectedModelCapability = computed(() => {
+  return props.models.find(model => model.id === props.selectedModel) || null
+})
+
+const reasoningEfforts = computed(() => selectedModelCapability.value?.reasoningEfforts || [])
+
+const modelLabel = computed(() => {
+  if (props.capabilitiesLoading && !selectedModelCapability.value) return 'Loading models'
+  return selectedModelCapability.value?.label || props.selectedModel || 'Select model'
+})
+
+const reasoningLabel = computed(() => {
+  if (props.capabilitiesLoading && !reasoningEfforts.value.length) return 'Loading reasoning'
+  return props.selectedReasoningEffort || 'Select reasoning'
+})
+
+const modelItems = computed<DropdownMenuItem[]>(() => {
+  return props.models.map(model => ({
+    label: model.label,
+    icon: 'i-lucide-cpu',
+    checked: model.id === props.selectedModel,
+    onSelect: () => emit('updateSelectedModel', model.id),
+    trailingIcon: model.id === props.selectedModel ? 'i-lucide-check' : undefined
+  }))
+})
+
+const reasoningItems = computed<DropdownMenuItem[]>(() => {
+  return reasoningEfforts.value.map(reasoningEffort => ({
+    label: reasoningEffort,
+    icon: 'i-lucide-brain',
+    checked: reasoningEffort === props.selectedReasoningEffort,
+    onSelect: () => emit('updateSelectedReasoningEffort', reasoningEffort),
+    trailingIcon: reasoningEffort === props.selectedReasoningEffort ? 'i-lucide-check' : undefined
+  }))
+})
 </script>
 
 <template>
@@ -48,10 +86,8 @@ const selectors = computed(() => [
 
     <div class="flex min-w-0 items-center gap-1.5 overflow-x-auto">
       <UButton
-        v-for="selector in selectors"
-        :key="selector.ariaLabel"
-        :aria-label="selector.ariaLabel"
-        :icon="selector.icon"
+        :aria-label="'Hermes profile'"
+        icon="i-lucide-user-round"
         trailing-icon="i-lucide-chevron-down"
         color="neutral"
         variant="ghost"
@@ -59,8 +95,60 @@ const selectors = computed(() => [
         class="shrink-0"
         disabled
       >
-        {{ selector.label }}
+        {{ profileLabel }}
       </UButton>
+
+      <UButton
+        :aria-label="'Project or directory'"
+        icon="i-lucide-folder"
+        trailing-icon="i-lucide-chevron-down"
+        color="neutral"
+        variant="ghost"
+        size="sm"
+        class="shrink-0"
+        disabled
+      >
+        {{ projectLabel }}
+      </UButton>
+
+      <UDropdownMenu
+        :items="modelItems"
+        :disabled="capabilitiesLoading || !modelItems.length"
+        :content="{ align: 'start', side: 'top', sideOffset: 8 }"
+      >
+        <UButton
+          :aria-label="'Model'"
+          icon="i-lucide-cpu"
+          trailing-icon="i-lucide-chevron-down"
+          color="neutral"
+          variant="ghost"
+          size="sm"
+          class="shrink-0"
+          :loading="capabilitiesLoading && !modelItems.length"
+        >
+          {{ modelLabel }}
+        </UButton>
+      </UDropdownMenu>
+
+      <UDropdownMenu
+        :items="reasoningItems"
+        :disabled="capabilitiesLoading || !reasoningItems.length"
+        :content="{ align: 'start', side: 'top', sideOffset: 8 }"
+      >
+        <UButton
+          :aria-label="'Reasoning effort'"
+          icon="i-lucide-brain"
+          trailing-icon="i-lucide-chevron-down"
+          color="neutral"
+          variant="ghost"
+          size="sm"
+          class="shrink-0"
+          :disabled="capabilitiesLoading || !reasoningItems.length"
+          :loading="capabilitiesLoading && !reasoningItems.length"
+        >
+          {{ reasoningLabel }}
+        </UButton>
+      </UDropdownMenu>
     </div>
   </div>
 

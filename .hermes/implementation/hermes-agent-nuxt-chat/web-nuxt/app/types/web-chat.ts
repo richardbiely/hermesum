@@ -32,9 +32,23 @@ export type WebChatSession = {
   preview: string
   source: string | null
   model: string | null
+  reasoningEffort: string | null
   messageCount: number
   createdAt: string
   updatedAt: string
+}
+
+export type WebChatModelCapability = {
+  id: string
+  label: string
+  reasoningEfforts: string[]
+  defaultReasoningEffort: string | null
+}
+
+export type WebChatCapabilitiesResponse = {
+  provider: string
+  defaultModel: string | null
+  models: WebChatModelCapability[]
 }
 
 export type SessionListResponse = {

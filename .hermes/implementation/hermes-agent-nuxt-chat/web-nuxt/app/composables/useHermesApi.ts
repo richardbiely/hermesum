@@ -1,4 +1,9 @@
-import type { SessionDetailResponse, SessionListResponse, StartRunResponse } from '~/types/web-chat'
+import type {
+  SessionDetailResponse,
+  SessionListResponse,
+  StartRunResponse,
+  WebChatCapabilitiesResponse
+} from '~/types/web-chat'
 
 function hermesToken() {
   if (import.meta.server) return undefined
@@ -17,15 +22,24 @@ export function useHermesApi() {
   }
 
   return {
+    getCapabilities: () => request<WebChatCapabilitiesResponse>('/api/web-chat/capabilities'),
     listSessions: () => request<SessionListResponse>('/api/web-chat/sessions'),
     getSession: (id: string) => request<SessionDetailResponse>(`/api/web-chat/sessions/${id}`),
     createSession: (message: string) => request<SessionDetailResponse>('/api/web-chat/sessions', {
       method: 'POST',
       body: { message }
     }),
-    startRun: (input: string, sessionId?: string) => request<StartRunResponse>('/api/web-chat/runs', {
+    startRun: (
+      input: string,
+      options: { sessionId?: string, model?: string | null, reasoningEffort?: string | null } = {}
+    ) => request<StartRunResponse>('/api/web-chat/runs', {
       method: 'POST',
-      body: { input, sessionId }
+      body: {
+        input,
+        sessionId: options.sessionId,
+        model: options.model,
+        reasoningEffort: options.reasoningEffort
+      }
     })
   }
 }

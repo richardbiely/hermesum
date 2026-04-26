@@ -31,7 +31,7 @@ cp "$ROOT/backend/hermes_cli/web_chat.py" "$RUNTIME/hermes_cli/web_chat.py"
 mkdir -p "$RUNTIME/tests/hermes_cli"
 cp "$ROOT/backend/tests/hermes_cli/test_web_chat.py" "$RUNTIME/tests/hermes_cli/test_web_chat.py"
 
-RUNTIME_WEB_SERVER="$RUNTIME/hermes_cli/web_server.py" "$PYTHON" - <<'PY'
+RUNTIME_WEB_SERVER="$RUNTIME/hermes_cli/web_server.py" RUNTIME_HERMES_STATE="$RUNTIME/hermes_state.py" "$PYTHON" - <<'PY'
 from pathlib import Path
 import os
 
@@ -55,6 +55,62 @@ if 'request.query_params.get("session_token", "")' not in text:
     text = text.replace(needle, replacement, 1)
 
 path.write_text(text)
+
+state_path = Path(os.environ["RUNTIME_HERMES_STATE"])
+state_text = state_path.read_text()
+
+if "def update_session_model_settings(" not in state_text:
+    needle = """    def update_system_prompt(self, session_id: str, system_prompt: str) -> None:\n        \"\"\"Store the full assembled system prompt snapshot.\"\"\"\n        def _do(conn):\n            conn.execute(\n                \"UPDATE sessions SET system_prompt = ? WHERE id = ?\",\n                (system_prompt, session_id),\n            )\n        self._execute_write(_do)\n"""
+    replacement = needle + '''
+
+    def update_session_model_settings(
+        self,
+        session_id: str,
+        *,
+        model: Optional[str] = None,
+        model_config_updates: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        \"\"\"Update session-level model settings while preserving other config.\"\"\"
+
+        def _do(conn):
+            cursor = conn.execute(
+                \"SELECT model_config FROM sessions WHERE id = ?\",
+                (session_id,),
+            )
+            row = cursor.fetchone()
+            model_config: Dict[str, Any] = {}
+            if row and row[\"model_config\"]:
+                try:
+                    parsed = json.loads(row[\"model_config\"])
+                except Exception:
+                    parsed = None
+                if isinstance(parsed, dict):
+                    model_config = parsed
+
+            if model_config_updates:
+                for key, value in model_config_updates.items():
+                    if value is None:
+                        model_config.pop(key, None)
+                    else:
+                        model_config[key] = value
+
+            conn.execute(
+                \"\"\"UPDATE sessions
+                   SET model = COALESCE(?, model),
+                       model_config = ?
+                   WHERE id = ?\"\"\",
+                (
+                    model,
+                    json.dumps(model_config) if model_config else None,
+                    session_id,
+                ),
+            )
+
+        self._execute_write(_do)
+'''
+    state_text = state_text.replace(needle, replacement, 1)
+
+state_path.write_text(state_text)
 PY
 
 if [[ ! -d "$WEB/node_modules" ]]; then

@@ -48,6 +48,7 @@ def test_lists_sessions_for_chat_sidebar(client):
         "preview": "Hello from the first session",
         "source": "cli",
         "model": "test-model",
+        "reasoningEffort": None,
         "messageCount": 2,
         "createdAt": data["sessions"][0]["createdAt"],
         "updatedAt": data["sessions"][0]["updatedAt"],
@@ -92,11 +93,39 @@ def test_returns_session_with_messages(client):
     data = response.json()
     assert data["session"]["id"] == "session-detail"
     assert data["session"]["messageCount"] == 2
+    assert data["session"]["reasoningEffort"] is None
     assert [message["role"] for message in data["messages"]] == ["user", "assistant"]
     assert data["messages"][0]["parts"] == [{"type": "text", "text": "Can you help?", "name": None, "status": None, "input": None, "output": None, "url": None, "mediaType": None, "approvalId": None}]
     assert data["messages"][1]["parts"][0]["type"] == "reasoning"
     assert data["messages"][1]["parts"][0]["text"] == "Short reasoning"
     assert data["messages"][1]["parts"][1]["text"] == "Yes."
+
+
+def test_returns_chat_capabilities(client, monkeypatch):
+    import hermes_cli.web_chat as web_chat
+
+    monkeypatch.setattr(web_chat, "_available_model_ids", lambda: ["gpt-5.4", "gpt-5.3-codex"])
+
+    response = client.get("/api/web-chat/capabilities")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["provider"] == "codex"
+    assert data["defaultModel"] == "gpt-5.4"
+    assert data["models"] == [
+        {
+            "id": "gpt-5.4",
+            "label": "gpt-5.4",
+            "reasoningEfforts": ["none", "low", "medium", "high", "xhigh"],
+            "defaultReasoningEffort": "none",
+        },
+        {
+            "id": "gpt-5.3-codex",
+            "label": "gpt-5.3-codex",
+            "reasoningEfforts": ["low", "medium", "high", "xhigh"],
+            "defaultReasoningEffort": "medium",
+        },
+    ]
 
 
 def test_creates_session_with_initial_user_message(client):
@@ -122,17 +151,26 @@ def test_creates_session_with_initial_user_message(client):
 def test_start_run_returns_ids_and_persists_messages(client, monkeypatch):
     import hermes_cli.web_chat as web_chat
 
+    seen = {}
+
     def fake_executor(context, emit):
+        seen["model"] = context.model
+        seen["reasoningEffort"] = context.reasoning_effort
         emit({"type": "message.delta", "content": "Done"})
         return "Done"
 
     monkeypatch.setattr(web_chat, "run_manager", web_chat.RunManager(fake_executor))
 
-    response = client.post("/api/web-chat/runs", json={"input": "Say done"})
+    response = client.post("/api/web-chat/runs", json={
+        "input": "Say done",
+        "model": "gpt-5.3-codex",
+        "reasoningEffort": "high",
+    })
     assert response.status_code == 202
     data = response.json()
     assert data["sessionId"]
     assert data["runId"]
+    assert seen == {"model": "gpt-5.3-codex", "reasoningEffort": "high"}
 
     with client.stream("GET", f"/api/web-chat/runs/{data['runId']}/events") as stream:
         body = stream.read().decode()
@@ -145,6 +183,8 @@ def test_start_run_returns_ids_and_persists_messages(client, monkeypatch):
     detail = client.get(f"/api/web-chat/sessions/{data['sessionId']}")
     assert [message["role"] for message in detail.json()["messages"]] == ["user", "assistant"]
     assert detail.json()["messages"][1]["parts"][0]["text"] == "Done"
+    assert detail.json()["session"]["model"] == "gpt-5.3-codex"
+    assert detail.json()["session"]["reasoningEffort"] == "high"
 
 
 def test_start_run_allows_duplicate_initial_titles(client, monkeypatch):
@@ -161,6 +201,57 @@ def test_start_run_allows_duplicate_initial_titles(client, monkeypatch):
     assert first.status_code == 202
     assert second.status_code == 202
     assert first.json()["sessionId"] != second.json()["sessionId"]
+
+
+def test_start_run_for_existing_session_updates_saved_model_and_reasoning(client, monkeypatch):
+    import hermes_cli.web_chat as web_chat
+    from hermes_state import SessionDB
+
+    db = SessionDB()
+    db.create_session("session-existing", source="web-chat", model="gpt-5.4")
+    db.append_message("session-existing", "user", "Existing")
+
+    def fake_executor(context, emit):
+        return "Updated"
+
+    monkeypatch.setattr(web_chat, "run_manager", web_chat.RunManager(fake_executor))
+
+    response = client.post("/api/web-chat/runs", json={
+        "sessionId": "session-existing",
+        "input": "Switch models",
+        "model": "gpt-5.3-codex",
+        "reasoningEffort": "xhigh",
+    })
+
+    assert response.status_code == 202
+
+    detail = client.get("/api/web-chat/sessions/session-existing")
+    assert detail.status_code == 200
+    assert detail.json()["session"]["model"] == "gpt-5.3-codex"
+    assert detail.json()["session"]["reasoningEffort"] == "xhigh"
+
+
+def test_invalid_reasoning_effort_falls_back_safely(client, monkeypatch):
+    import hermes_cli.web_chat as web_chat
+
+    seen = {}
+
+    def fake_executor(context, emit):
+        seen["model"] = context.model
+        seen["reasoningEffort"] = context.reasoning_effort
+        return "Done"
+
+    monkeypatch.setattr(web_chat, "_available_model_ids", lambda: ["gpt-5.4"])
+    monkeypatch.setattr(web_chat, "run_manager", web_chat.RunManager(fake_executor))
+
+    response = client.post("/api/web-chat/runs", json={
+        "input": "Use safe defaults",
+        "model": "gpt-5.4",
+        "reasoningEffort": "banana",
+    })
+
+    assert response.status_code == 202
+    assert seen == {"model": "gpt-5.4", "reasoningEffort": "none"}
 
 
 def test_run_events_accept_session_token_query_for_eventsource(client, monkeypatch):

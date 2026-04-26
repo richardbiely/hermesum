@@ -57,9 +57,23 @@ class WebChatSession(BaseModel):
     preview: str
     source: str | None
     model: str | None
+    reasoningEffort: str | None = None
     messageCount: int
     createdAt: str
     updatedAt: str
+
+
+class WebChatModelCapability(BaseModel):
+    id: str
+    label: str
+    reasoningEfforts: list[str]
+    defaultReasoningEffort: str | None = None
+
+
+class WebChatCapabilitiesResponse(BaseModel):
+    provider: str
+    defaultModel: str | None
+    models: list[WebChatModelCapability]
 
 
 class SessionListResponse(BaseModel):
@@ -80,6 +94,7 @@ class StartRunRequest(BaseModel):
     input: str = Field(min_length=1, max_length=65536)
     workspace: str | None = None
     model: str | None = None
+    reasoningEffort: str | None = None
     provider: str | None = None
     enabledToolsets: list[str] | None = None
 
@@ -101,6 +116,7 @@ class RunContext:
     input: str
     workspace: str | None = None
     model: str | None = None
+    reasoning_effort: str | None = None
     provider: str | None = None
     enabled_toolsets: list[str] | None = None
     stop_requested: threading.Event = field(default_factory=threading.Event)
@@ -123,12 +139,35 @@ class RunManager:
     def start(self, request: StartRunRequest) -> StartRunResponse:
         db = _db()
         session_id = request.sessionId or uuid4().hex
+        session = None
         if request.sessionId:
-            if not db.get_session(request.sessionId):
+            session = db.get_session(request.sessionId)
+            if not session:
                 raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Session not found")
             db.reopen_session(request.sessionId)
         else:
-            db.create_session(session_id, source=WEB_CHAT_SOURCE, model=request.model)
+            session = None
+
+        effective_model = _resolve_requested_model(request.model, session=session)
+        effective_reasoning_effort = _resolve_requested_reasoning_effort(
+            effective_model,
+            request.reasoningEffort,
+            session=session,
+        )
+
+        if request.sessionId:
+            db.update_session_model_settings(
+                session_id,
+                model=effective_model,
+                model_config_updates={"reasoningEffort": effective_reasoning_effort},
+            )
+        else:
+            db.create_session(
+                session_id,
+                source=WEB_CHAT_SOURCE,
+                model=effective_model,
+                model_config={"reasoningEffort": effective_reasoning_effort} if effective_reasoning_effort else None,
+            )
             _set_session_title_safely(db, session_id, _title_from_message(request.input))
 
         db.append_message(session_id, "user", request.input)
@@ -139,7 +178,8 @@ class RunManager:
             session_id=session_id,
             input=request.input,
             workspace=request.workspace,
-            model=request.model,
+            model=effective_model,
+            reasoning_effort=effective_reasoning_effort,
             provider=request.provider,
             enabled_toolsets=request.enabledToolsets,
         )
@@ -198,6 +238,7 @@ class RunManager:
 
 def _agent_executor(context: RunContext, emit: Callable[[dict[str, Any]], None]) -> str:
     """Run a real Hermes Agent turn and stream text deltas to the web UI."""
+    from hermes_constants import parse_reasoning_effort
     from hermes_cli.config import load_config
     from hermes_cli.runtime_provider import resolve_runtime_provider
     from run_agent import AIAgent
@@ -214,6 +255,7 @@ def _agent_executor(context: RunContext, emit: Callable[[dict[str, Any]], None])
     model = context.model or runtime.get("model") or model_cfg.get("default") or model_cfg.get("model") or ""
     api_key = runtime.get("api_key")
     base_url = runtime.get("base_url")
+    reasoning_config = parse_reasoning_effort(context.reasoning_effort or "")
     if not api_key and base_url and "openrouter.ai" not in base_url:
         api_key = "no-key-required"
 
@@ -246,6 +288,7 @@ def _agent_executor(context: RunContext, emit: Callable[[dict[str, Any]], None])
         providers_ignored=provider_routing.get("ignore"),
         providers_order=provider_routing.get("order"),
         provider_sort=provider_routing.get("sort"),
+        reasoning_config=reasoning_config,
         stream_delta_callback=stream_delta,
         reasoning_callback=reasoning_delta,
     )
@@ -310,6 +353,7 @@ def _serialize_session(session: dict[str, Any]) -> WebChatSession:
         preview=session.get("preview") or "",
         source=session.get("source"),
         model=session.get("model"),
+        reasoningEffort=_session_reasoning_effort(session),
         messageCount=session.get("message_count", 0),
         createdAt=created_at,
         updatedAt=updated_at,
@@ -346,6 +390,147 @@ def _get_session_or_404(db: SessionDB, session_id: str) -> dict[str, Any]:
     return session
 
 
+def _session_model_config(session: dict[str, Any] | None) -> dict[str, Any]:
+    if not session:
+        return {}
+    raw = session.get("model_config")
+    if not isinstance(raw, str) or not raw:
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except Exception:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
+
+
+def _session_reasoning_effort(session: dict[str, Any] | None) -> str | None:
+    config = _session_model_config(session)
+    value = config.get("reasoningEffort") or config.get("reasoning_effort")
+    if isinstance(value, str) and value.strip():
+        return value.strip().lower()
+
+    reasoning_config = config.get("reasoning_config")
+    if isinstance(reasoning_config, dict):
+        if reasoning_config.get("enabled") is False:
+            return "none"
+        effort = reasoning_config.get("effort")
+        if isinstance(effort, str) and effort.strip():
+            return effort.strip().lower()
+    return None
+
+
+def _resolve_codex_access_token() -> str | None:
+    try:
+        from hermes_cli.auth import resolve_codex_runtime_credentials
+
+        creds = resolve_codex_runtime_credentials(refresh_if_expiring=True)
+    except Exception:
+        return None
+
+    token = creds.get("api_key") if isinstance(creds, dict) else None
+    return token.strip() if isinstance(token, str) and token.strip() else None
+
+
+def _available_model_ids() -> list[str]:
+    try:
+        from hermes_cli.codex_models import DEFAULT_CODEX_MODELS, get_codex_model_ids
+
+        model_ids = get_codex_model_ids(access_token=_resolve_codex_access_token())
+        return [model_id for model_id in model_ids if model_id] or list(DEFAULT_CODEX_MODELS)
+    except Exception:
+        return [
+            "gpt-5.5",
+            "gpt-5.4-mini",
+            "gpt-5.4",
+            "gpt-5.3-codex",
+            "gpt-5.2-codex",
+            "gpt-5.1-codex-max",
+            "gpt-5.1-codex-mini",
+        ]
+
+
+def _model_reasoning_efforts(model_id: str | None) -> list[str]:
+    normalized = str(model_id or "").strip().lower()
+    if not normalized:
+        return ["low", "medium", "high"]
+    if normalized in {"gpt-5-pro", "gpt-5.4-pro"}:
+        return ["high"]
+    if normalized.startswith("gpt-5.4"):
+        return ["none", "low", "medium", "high", "xhigh"]
+    if normalized == "gpt-5.3-codex":
+        return ["low", "medium", "high", "xhigh"]
+    if normalized.startswith("gpt-5.1"):
+        return ["none", "low", "medium", "high"]
+    if normalized.startswith("gpt-5"):
+        return ["low", "medium", "high"]
+    return ["low", "medium", "high"]
+
+
+def _default_reasoning_effort(model_id: str | None) -> str | None:
+    normalized = str(model_id or "").strip().lower()
+    efforts = _model_reasoning_efforts(normalized)
+    if normalized in {"gpt-5-pro", "gpt-5.4-pro"}:
+        return "high"
+    if normalized.startswith("gpt-5.4") or normalized.startswith("gpt-5.1"):
+        return "none" if "none" in efforts else "medium"
+    if "medium" in efforts:
+        return "medium"
+    return efforts[0] if efforts else None
+
+
+def _model_capabilities() -> list[WebChatModelCapability]:
+    capabilities: list[WebChatModelCapability] = []
+    for model_id in _available_model_ids():
+        capabilities.append(
+            WebChatModelCapability(
+                id=model_id,
+                label=model_id,
+                reasoningEfforts=_model_reasoning_efforts(model_id),
+                defaultReasoningEffort=_default_reasoning_effort(model_id),
+            )
+        )
+    return capabilities
+
+
+def _default_model_id() -> str | None:
+    model_ids = _available_model_ids()
+    return model_ids[0] if model_ids else None
+
+
+def _resolve_requested_model(model_id: str | None, *, session: dict[str, Any] | None = None) -> str | None:
+    requested = str(model_id or "").strip()
+    if requested:
+        return requested
+    session_model = str((session or {}).get("model") or "").strip()
+    if session_model:
+        return session_model
+    return _default_model_id()
+
+
+def _resolve_requested_reasoning_effort(
+    model_id: str | None,
+    reasoning_effort: str | None,
+    *,
+    session: dict[str, Any] | None = None,
+) -> str | None:
+    supported = _model_reasoning_efforts(model_id)
+    requested = str(reasoning_effort or "").strip().lower()
+    if requested in supported:
+        return requested
+
+    session_reasoning = _session_reasoning_effort(session)
+    if session_reasoning in supported:
+        return session_reasoning
+
+    default_effort = _default_reasoning_effort(model_id)
+    if default_effort in supported:
+        return default_effort
+
+    if "medium" in supported:
+        return "medium"
+    return supported[0] if supported else None
+
+
 def _list_non_empty_sessions(db: SessionDB, limit: int, offset: int) -> list[dict[str, Any]]:
     sessions: list[dict[str, Any]] = []
     db_offset = 0
@@ -369,6 +554,15 @@ def list_sessions(
     db = _db()
     sessions = _list_non_empty_sessions(db, limit=limit, offset=offset)
     return SessionListResponse(sessions=[_serialize_session(session) for session in sessions])
+
+
+@router.get("/capabilities", response_model=WebChatCapabilitiesResponse)
+def get_capabilities() -> WebChatCapabilitiesResponse:
+    return WebChatCapabilitiesResponse(
+        provider="codex",
+        defaultModel=_default_model_id(),
+        models=_model_capabilities(),
+    )
 
 
 @router.post("/sessions", status_code=status.HTTP_201_CREATED, response_model=SessionDetailResponse)

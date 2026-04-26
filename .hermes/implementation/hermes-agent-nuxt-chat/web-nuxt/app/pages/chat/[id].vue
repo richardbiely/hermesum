@@ -5,6 +5,7 @@ import type { WebChatMessage, WebChatPart } from '~/types/web-chat'
 const route = useRoute()
 const api = useHermesApi()
 const runStream = useHermesRunStream()
+const composer = useChatComposerCapabilities()
 const input = ref('')
 const messages = ref<WebChatMessage[]>([])
 const bottomRef = ref<HTMLElement | null>(null)
@@ -23,6 +24,15 @@ const { data, refresh } = await useAsyncData(
 watchEffect(() => {
   messages.value = data.value?.messages ? [...data.value.messages] : []
 })
+
+watch(
+  () => data.value?.session,
+  async (session) => {
+    if (!session) return
+    await composer.initializeForSession(session)
+  },
+  { immediate: true }
+)
 
 const title = computed(() => data.value?.session.title || 'Chat')
 const chatStatus = computed(() => runStream.status.value === 'ready' ? 'ready' : 'streaming')
@@ -137,7 +147,12 @@ async function onSubmit() {
   scheduleAutoScroll()
 
   try {
-    const run = await api.startRun(message, sessionId.value)
+    const run = await api.startRun(message, {
+      sessionId: sessionId.value,
+      model: composer.selectedModel.value,
+      reasoningEffort: composer.selectedReasoningEffort.value
+    })
+    composer.rememberLastUsedSelection()
     connectRun(run.runId)
   } catch (err) {
     if (messages.value.at(-1)?.role === 'assistant' && messages.value.at(-1)?.parts.some(part => part.status === 'thinking')) {
@@ -207,7 +222,16 @@ onBeforeUnmount(() => {
       <UContainer class="pb-4 sm:pb-6">
         <UChatPrompt v-model="input" :error="error" @submit="onSubmit">
           <template #footer>
-            <ChatPromptFooter :submit-status="chatStatus" @stop="runStream.stop" />
+            <ChatPromptFooter
+              :submit-status="chatStatus"
+              :models="composer.models.value"
+              :selected-model="composer.selectedModel.value"
+              :selected-reasoning-effort="composer.selectedReasoningEffort.value"
+              :capabilities-loading="composer.capabilitiesLoading.value"
+              @stop="runStream.stop"
+              @update-selected-model="composer.selectedModel.value = $event"
+              @update-selected-reasoning-effort="composer.selectedReasoningEffort.value = $event"
+            />
           </template>
         </UChatPrompt>
       </UContainer>

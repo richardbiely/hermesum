@@ -5,6 +5,9 @@ const error = ref<Error | undefined>()
 const api = useHermesApi()
 const router = useRouter()
 const refreshSessions = inject<() => Promise<void> | void>('refreshSessions')
+const composer = useChatComposerCapabilities()
+
+await composer.initializeForNewChat()
 
 async function onSubmit() {
   const message = input.value.trim()
@@ -13,7 +16,11 @@ async function onSubmit() {
   loading.value = true
   error.value = undefined
   try {
-    const result = await api.startRun(message)
+    const result = await api.startRun(message, {
+      model: composer.selectedModel.value,
+      reasoningEffort: composer.selectedReasoningEffort.value
+    })
+    composer.rememberLastUsedSelection()
     await router.push({ path: `/chat/${result.sessionId}`, query: { run: result.runId } })
     void refreshSessions?.()
   } catch (err) {
@@ -40,7 +47,15 @@ async function onSubmit() {
 
           <UChatPrompt v-model="input" :error="error" @submit="onSubmit">
             <template #footer>
-              <ChatPromptFooter :submit-status="loading ? 'submitted' : 'ready'" />
+              <ChatPromptFooter
+                :submit-status="loading ? 'submitted' : 'ready'"
+                :models="composer.models.value"
+                :selected-model="composer.selectedModel.value"
+                :selected-reasoning-effort="composer.selectedReasoningEffort.value"
+                :capabilities-loading="composer.capabilitiesLoading.value"
+                @update-selected-model="composer.selectedModel.value = $event"
+                @update-selected-reasoning-effort="composer.selectedReasoningEffort.value = $event"
+              />
             </template>
           </UChatPrompt>
         </div>
