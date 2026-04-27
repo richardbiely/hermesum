@@ -16,24 +16,25 @@ test('replays prompt events that arrive before a subscriber is attached', () => 
   assert.deepEqual(received, [prompt])
 })
 
-test('replays assistant stream events in original order', () => {
+test('replays live process events needed after route resubscribe', () => {
   const replay = createRunEventReplay()
-  replay.record('onToolStarted', { name: 'terminal' })
-  replay.record('onDelta', 'Hello')
-  replay.record('onDelta', ' world')
+  replay.record('onReasoningDelta', 'Thinking')
+  replay.record('onToolStarted', { name: 'terminal', input: { command: 'pnpm typecheck' } })
   replay.record('onToolCompleted', { name: 'terminal' })
+  replay.record('onDelta', 'Done')
 
   const received = []
   replay.replay({
-    onToolStarted: value => received.push(['started', value.name]),
-    onDelta: value => received.push(['delta', value]),
-    onToolCompleted: value => received.push(['completed', value.name])
+    onReasoningDelta: value => received.push(['reasoning', value]),
+    onToolStarted: value => received.push(['started', value.name, value.input.command]),
+    onToolCompleted: value => received.push(['completed', value.name]),
+    onDelta: value => received.push(['delta', value])
   })
 
   assert.deepEqual(received, [
-    ['started', 'terminal'],
-    ['delta', 'Hello'],
-    ['delta', ' world'],
-    ['completed', 'terminal']
+    ['reasoning', 'Thinking'],
+    ['started', 'terminal', 'pnpm typecheck'],
+    ['completed', 'terminal'],
+    ['delta', 'Done']
   ])
 })

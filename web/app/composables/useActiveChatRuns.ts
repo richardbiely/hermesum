@@ -4,11 +4,14 @@ import { createRunEventReplay } from '../utils/runEventReplay'
 
 type RunEventPayload = Record<string, unknown>
 
+type ToolRunPayload = { name?: string, preview?: string, input?: unknown }
+
 type ActiveRunHandlers = {
   onDelta?: (content: string) => void
+  onReasoningDelta?: (content: string) => void
   onCompleted?: (content?: string) => void
-  onToolStarted?: (payload: { name?: string, preview?: string, input?: unknown }) => void
-  onToolCompleted?: (payload: { name?: string }) => void
+  onToolStarted?: (payload: ToolRunPayload) => void
+  onToolCompleted?: (payload: ToolRunPayload) => void
   onPromptRequested?: (prompt: InteractivePrompt) => void
   onPromptUpdated?: (prompt: InteractivePrompt) => void
   onError?: (error: Error) => void
@@ -138,29 +141,36 @@ export function useActiveChatRuns() {
 
     source.addEventListener('message.delta', (event) => {
       const payload = parsePayload(event)
-      notify(run, subscriber => subscriber.onDelta?.(String(payload.content || '')))
+      recordAndNotify(run, 'onDelta', String(payload.content || ''))
+    })
+
+    source.addEventListener('reasoning.delta', (event) => {
+      const payload = parsePayload(event)
+      recordAndNotify(run, 'onReasoningDelta', String(payload.content || ''))
     })
 
     source.addEventListener('message.completed', (event) => {
       const payload = parsePayload(event)
       playNotificationSound(isActiveVisibleChat(run.sessionId) ? 'default' : 'attention')
-      notify(run, subscriber => subscriber.onCompleted?.(typeof payload.content === 'string' ? payload.content : undefined))
+      recordAndNotify(run, 'onCompleted', typeof payload.content === 'string' ? payload.content : undefined)
     })
 
     source.addEventListener('tool.started', (event) => {
       const payload = parsePayload(event)
-      notify(run, subscriber => subscriber.onToolStarted?.({
+      recordAndNotify(run, 'onToolStarted', {
         name: typeof payload.name === 'string' ? payload.name : undefined,
         preview: typeof payload.preview === 'string' ? payload.preview : undefined,
         input: payload.input
-      }))
+      })
     })
 
     source.addEventListener('tool.completed', (event) => {
       const payload = parsePayload(event)
-      notify(run, subscriber => subscriber.onToolCompleted?.({
-        name: typeof payload.name === 'string' ? payload.name : undefined
-      }))
+      recordAndNotify(run, 'onToolCompleted', {
+        name: typeof payload.name === 'string' ? payload.name : undefined,
+        preview: typeof payload.preview === 'string' ? payload.preview : undefined,
+        input: payload.input
+      })
     })
 
     source.addEventListener('prompt.requested', (event) => {

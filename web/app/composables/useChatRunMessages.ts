@@ -66,12 +66,31 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
     hasAssistantResponseStarted.value = true
     const assistant = assistantMessage()
     removeThinkingPart(assistant)
+    for (const part of assistant.parts) {
+      if (part.type === 'reasoning' && part.status === 'streaming') part.status = null
+      if (part.type === 'tool' && part.status === 'running') part.status = 'completed'
+    }
     const textPart = assistant.parts.find(part => part.type === 'text')
     if (textPart) {
       textPart.text = content
       textPart.status = null
     } else {
       assistant.parts.push({ type: 'text', text: content, status: null })
+    }
+  }
+
+  function appendReasoningDelta(content: string) {
+    if (!content) return
+
+    hasAssistantResponseStarted.value = true
+    const assistant = assistantMessage()
+    removeThinkingPart(assistant)
+
+    const lastPart = assistant.parts.at(-1)
+    if (lastPart?.type === 'reasoning') {
+      lastPart.text = `${lastPart.text || ''}${content}`
+    } else {
+      assistant.parts.push({ type: 'reasoning', text: content, status: 'streaming' })
     }
   }
 
@@ -144,6 +163,9 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
     unsubscribeRun = options.activeChatRuns.subscribe(targetSessionId, {
       onDelta: (content) => {
         if (targetSessionId === options.sessionId.value) appendAssistantDelta(content)
+      },
+      onReasoningDelta: (content) => {
+        if (targetSessionId === options.sessionId.value) appendReasoningDelta(content)
       },
       onCompleted: (content) => {
         if (targetSessionId === options.sessionId.value) replaceAssistantMessage(content)
