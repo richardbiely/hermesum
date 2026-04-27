@@ -80,16 +80,6 @@ async function onSubmit() {
   }
 }
 
-function onPromptEnter(event: KeyboardEvent) {
-  if (event.shiftKey || event.isComposing) return
-
-  onPromptAutocompleteEnter(event)
-  if (event.defaultPrevented) return
-
-  event.preventDefault()
-  event.stopPropagation()
-  void onSubmit()
-}
 </script>
 
 <template>
@@ -113,7 +103,7 @@ function onPromptEnter(event: KeyboardEvent) {
             @keydown.down="onPromptArrowDown"
             @keydown.up="onPromptArrowUp"
             @keydown.esc="onPromptEscape"
-            @keydown.enter="onPromptEnter"
+            @keydown.enter="onPromptAutocompleteEnter"
           >
             <template #footer>
               <ChatPromptFooter

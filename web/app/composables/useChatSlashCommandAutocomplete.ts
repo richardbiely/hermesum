@@ -32,6 +32,7 @@ export function useChatSlashCommandAutocomplete(options: UseChatSlashCommandAuto
   }
 
   function onPromptEnter(event: KeyboardEvent) {
+    if (event.shiftKey || event.isComposing) return
     if (!options.slashCommands.isOpen.value) return
     const command = options.slashCommands.highlightedCommand()
     if (!command) return

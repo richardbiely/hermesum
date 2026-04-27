@@ -71,33 +71,39 @@ const emit = defineEmits<{
           :plugins="[highlight()]"
           class="*:first:mt-0 *:last:mb-0"
         />
-        <div v-else-if="editingMessageId === message.id" :ref="setEditingMessageContainer" class="space-y-2">
-          <UTextarea
+        <div v-else-if="editingMessageId === message.id" :ref="setEditingMessageContainer" class="w-full">
+          <UChatPrompt
             v-model="editingText"
-            autoresize
+            :disabled="savingEditedMessageId === message.id"
             :rows="3"
+            :autofocus="true"
+            :autoresize="true"
             class="w-full min-w-72"
+            @submit="emit('saveEdit', message)"
             @keydown.esc.prevent="emit('cancelEdit')"
-          />
-          <div class="flex justify-end gap-2">
-            <UButton
-              size="xs"
-              color="neutral"
-              variant="ghost"
-              label="Cancel"
-              :disabled="savingEditedMessageId === message.id"
-              @click="emit('cancelEdit')"
-            />
-            <UButton
-              size="xs"
-              color="primary"
-              variant="soft"
-              label="Save"
-              :loading="savingEditedMessageId === message.id"
-              :disabled="!editingText.trim() || isRunning"
-              @click="emit('saveEdit', message)"
-            />
-          </div>
+          >
+            <template #footer>
+              <div class="flex justify-end gap-2">
+                <UButton
+                  size="xs"
+                  color="neutral"
+                  variant="ghost"
+                  label="Cancel"
+                  :disabled="savingEditedMessageId === message.id"
+                  @click="emit('cancelEdit')"
+                />
+                <UButton
+                  size="xs"
+                  color="primary"
+                  variant="soft"
+                  label="Save"
+                  :loading="savingEditedMessageId === message.id"
+                  :disabled="!editingText.trim()"
+                  @click="emit('saveEdit', message)"
+                />
+              </div>
+            </template>
+          </UChatPrompt>
         </div>
         <p v-else class="whitespace-pre-wrap">
           {{ partText(group.part) }}
@@ -122,7 +128,7 @@ const emit = defineEmits<{
     <span class="whitespace-nowrap" :title="messageTimestampTitle(message.createdAt)">
       {{ formatMessageTimestamp(message.createdAt) }}
     </span>
-    <UTooltip text="Stop chat and edit prompt">
+    <UTooltip text="Edit prompt">
       <button
         type="button"
         class="inline-flex size-4 flex-none items-center justify-center text-muted hover:text-highlighted focus-visible:outline-2 focus-visible:outline-primary/50"

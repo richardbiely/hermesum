@@ -26,6 +26,7 @@ const loadingSkeletonCount = computed(() => loadingChatSkeletonCount(lastRendere
 const slashCommands = useSlashCommands({ input })
 const copiedMessageId = ref<string | null>(null)
 const workspaceInvalidSignal = ref(0)
+const suppressNextInterruptedMessage = ref(false)
 let copiedMessageTimer: ReturnType<typeof setTimeout> | undefined
 const refreshSessions = inject<() => Promise<void> | void>('refreshSessions')
 const markSessionRead = inject<(sessionId: string, messageCount: number) => void>('markSessionRead')
@@ -75,6 +76,11 @@ const {
   refresh,
   refreshSessions,
   refreshSessionOnFinish: false,
+  shouldSuppressCompleted: (payload) => {
+    if (!suppressNextInterruptedMessage.value || payload.content !== 'Chat interrupted.') return false
+    suppressNextInterruptedMessage.value = false
+    return true
+  },
   toast,
   activeChatRuns
 })
@@ -112,6 +118,9 @@ const {
   activeChatRuns,
   connectRun,
   rememberLastUsedSelection: composer.rememberLastUsedSelection,
+  onInterruptingForEdit: () => {
+    suppressNextInterruptedMessage.value = true
+  },
   showError
 })
 
@@ -426,17 +435,6 @@ async function onSubmit() {
   await sendMessageNow(message)
 }
 
-function onPromptEnter(event: KeyboardEvent) {
-  if (event.shiftKey || event.isComposing) return
-
-  onPromptAutocompleteEnter(event)
-  if (event.defaultPrevented) return
-
-  event.preventDefault()
-  event.stopPropagation()
-  void onSubmit()
-}
-
 function editQueuedMessage(id: string) {
   const queued = queuedForSession.value.find(message => message.id === id)
   if (!queued) return
@@ -735,7 +733,7 @@ onBeforeUnmount(() => {
             @keydown.down="onPromptArrowDown"
             @keydown.up="onPromptArrowUp"
             @keydown.esc="onPromptEscape"
-            @keydown.enter="onPromptEnter"
+            @keydown.enter="onPromptAutocompleteEnter"
           >
             <template #footer>
               <ChatPromptFooter

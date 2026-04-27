@@ -16,6 +16,7 @@ type UseChatMessageEditingOptions = {
   activeChatRuns: ReturnType<typeof useActiveChatRuns>
   connectRun: (runId: string, sessionId: string) => void
   rememberLastUsedSelection: () => void
+  onInterruptingForEdit?: () => void
   showError: (err: unknown, fallback: string) => void
 }
 
@@ -39,6 +40,7 @@ export function useChatMessageEditing(options: UseChatMessageEditingOptions) {
 
     if (editingMessageBubble.value) {
       editingMessageBubble.value.style.width = ''
+      editingMessageBubble.value.style.maxWidth = ''
       editingMessageBubble.value = null
     }
 
@@ -52,11 +54,14 @@ export function useChatMessageEditing(options: UseChatMessageEditingOptions) {
 
   function alignEditingTextareaWithPrompt() {
     const container = editingMessageContainer.value
-    const promptTextarea = document.querySelector<HTMLTextAreaElement>('textarea[placeholder="Type your message here…"]')
-    const promptRoot = promptTextarea?.closest<HTMLElement>('[data-slot="root"]')
-    const bubble = container?.parentElement
-    const row = bubble?.parentElement
-    if (!container || !promptRoot || !bubble || !row) return
+    if (!container) return
+
+    const promptRoots = Array.from(document.querySelectorAll<HTMLElement>('[data-slot="root"]'))
+      .filter(root => root.querySelector('textarea') && !container.contains(root))
+    const promptRoot = promptRoots[promptRoots.length - 1]
+    const bubble = container.closest<HTMLElement>('[data-slot="content"]') ?? container.parentElement
+    const row = bubble?.closest<HTMLElement>('[data-slot="container"]') ?? bubble?.parentElement
+    if (!promptRoot || !bubble || !row) return
 
     const promptRect = promptRoot.getBoundingClientRect()
     const bubbleStyle = getComputedStyle(bubble)
@@ -70,6 +75,7 @@ export function useChatMessageEditing(options: UseChatMessageEditingOptions) {
     row.style.maxWidth = 'none'
     row.style.transform = `translateX(-${bubblePaddingLeft}px)`
     bubble.style.width = `${bubbleWidth}px`
+    bubble.style.maxWidth = 'none'
     container.style.width = `${promptRect.width}px`
     container.style.marginLeft = '0'
   }
@@ -85,20 +91,39 @@ export function useChatMessageEditing(options: UseChatMessageEditingOptions) {
   }
 
   function startEditingMessage(message: WebChatMessage) {
-    const sessionId = options.sessionId.value
-    const runIsActive = options.activeChatRuns.isRunning(sessionId)
-    if (!runIsActive && options.submitStatus.value === 'submitted') return
-
-    if (runIsActive) {
-      void options.activeChatRuns.stop(sessionId).catch((err: unknown) => {
-        options.showError(err, 'Failed to interrupt chat')
-      })
-    }
+    if (!options.activeChatRuns.isRunning(options.sessionId.value) && options.submitStatus.value === 'submitted') return
 
     resetEditingTextareaLayout()
     editingMessageId.value = message.id
     editingText.value = messageText(message)
     void focusEditingTextarea()
+  }
+
+  async function waitForRunToFinish(sessionId: string, runId: string) {
+    if (!options.activeChatRuns.isRunning(sessionId) || options.activeChatRuns.isRunFinished(runId)) return
+
+    await new Promise<void>((resolve) => {
+      const timeout = window.setTimeout(() => {
+        stopListening()
+        resolve()
+      }, 15000)
+      const stopListening = options.activeChatRuns.onFinished((finishedSessionId, finishedRunId) => {
+        if (finishedSessionId !== sessionId || finishedRunId !== runId) return
+        window.clearTimeout(timeout)
+        stopListening()
+        resolve()
+      })
+    })
+  }
+
+  async function stopActiveRunBeforeSavingEdit() {
+    const sessionId = options.sessionId.value
+    const runId = options.activeChatRuns.runIdForSession(sessionId)
+    if (!runId) return
+
+    options.onInterruptingForEdit?.()
+    await options.activeChatRuns.stop(sessionId)
+    await waitForRunToFinish(sessionId, runId)
   }
 
   function cancelEditingMessage() {
@@ -115,13 +140,17 @@ export function useChatMessageEditing(options: UseChatMessageEditingOptions) {
 
   async function saveEditedMessage(message: WebChatMessage) {
     const content = editingText.value.trim()
-    if (!content || savingEditedMessageId.value || options.activeChatRuns.isRunning(options.sessionId.value)) return
+    if (!content || savingEditedMessageId.value) return
 
     const previousMessages = [...options.messages.value]
     savingEditedMessageId.value = message.id
     void prepareNotificationSound()
 
     try {
+      if (options.activeChatRuns.isRunning(options.sessionId.value)) {
+        await stopActiveRunBeforeSavingEdit()
+      }
+
       const updated = await options.api.editMessage(options.sessionId.value, message.id, content)
       options.data.value = updated
       options.messages.value = [...updated.messages]

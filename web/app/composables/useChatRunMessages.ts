@@ -10,6 +10,7 @@ type UseChatRunMessagesOptions = {
   refresh: () => Promise<unknown> | unknown
   refreshSessions?: () => Promise<void> | void
   refreshSessionOnFinish?: boolean
+  shouldSuppressCompleted?: (payload: { content?: string, changes?: WebChatWorkspaceChanges | null }) => boolean
   toast: ReturnType<typeof useToast>
   activeChatRuns: ReturnType<typeof useActiveChatRuns>
 }
@@ -190,7 +191,9 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
         if (targetSessionId === options.sessionId.value) appendReasoningDelta(content)
       },
       onCompleted: (payload) => {
-        if (targetSessionId === options.sessionId.value) replaceAssistantMessage(payload.content, payload.changes)
+        if (targetSessionId !== options.sessionId.value) return
+        if (options.shouldSuppressCompleted?.(payload)) return
+        replaceAssistantMessage(payload.content, payload.changes)
       },
       onToolStarted: (payload) => {
         if (targetSessionId === options.sessionId.value) appendToolStarted(payload)
