@@ -15,6 +15,9 @@ const emit = defineEmits<{
   delete: [id: string]
   steer: [id: string]
 }>()
+
+const actionButtonClass = 'size-6 rounded-md'
+const actionIconClass = 'size-3.5'
 </script>
 
 <template>
@@ -31,35 +34,50 @@ const emit = defineEmits<{
         </p>
       </div>
 
-      <div class="flex shrink-0 items-center gap-1 pt-0.5">
-        <UButton
-          color="neutral"
-          variant="ghost"
-          size="xs"
-          icon="i-lucide-pencil"
-          aria-label="Edit queued message"
-          :disabled="disabled || steeringId === message.id"
-          @click="emit('edit', message.id)"
-        />
-        <UButton
-          color="neutral"
-          variant="ghost"
-          size="xs"
-          :icon="steeringId === message.id ? 'i-lucide-loader-circle' : 'i-lucide-send'"
-          :loading="steeringId === message.id"
-          aria-label="Steer current run"
-          :disabled="disabled"
-          @click="emit('steer', message.id)"
-        />
-        <UButton
-          color="neutral"
-          variant="ghost"
-          size="xs"
-          icon="i-lucide-trash-2"
-          aria-label="Delete queued message"
-          :disabled="disabled || steeringId === message.id"
-          @click="emit('delete', message.id)"
-        />
+      <div class="flex shrink-0 items-center gap-0.5 pt-0.5">
+        <UTooltip text="Steer current run" :content="{ side: 'top', sideOffset: 6 }">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            square
+            :icon="steeringId === message.id ? 'i-lucide-loader-circle' : 'i-lucide-ship-wheel'"
+            :loading="steeringId === message.id"
+            :ui="{ leadingIcon: actionIconClass }"
+            :class="actionButtonClass"
+            aria-label="Steer current run"
+            :disabled="disabled"
+            @click="emit('steer', message.id)"
+          />
+        </UTooltip>
+        <UTooltip text="Delete queued message" :content="{ side: 'top', sideOffset: 6 }">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            square
+            icon="i-lucide-trash-2"
+            :ui="{ leadingIcon: actionIconClass }"
+            :class="actionButtonClass"
+            aria-label="Delete queued message"
+            :disabled="disabled || steeringId === message.id"
+            @click="emit('delete', message.id)"
+          />
+        </UTooltip>
+        <UTooltip text="Edit queued message" :content="{ side: 'top', sideOffset: 6 }">
+          <UButton
+            color="neutral"
+            variant="ghost"
+            size="xs"
+            square
+            icon="i-lucide-pencil"
+            :ui="{ leadingIcon: actionIconClass }"
+            :class="actionButtonClass"
+            aria-label="Edit queued message"
+            :disabled="disabled || steeringId === message.id"
+            @click="emit('edit', message.id)"
+          />
+        </UTooltip>
       </div>
     </div>
   </div>
