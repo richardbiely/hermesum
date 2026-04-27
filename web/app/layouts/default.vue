@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { syncInitialReadMessageCounts } from '~/utils/chatReadReceipts'
+import { readMessageCountForVisibleSession, syncInitialReadMessageCounts } from '~/utils/chatReadReceipts'
 import type { SessionGroup } from '~/utils/sessionGroups'
 import type { WebChatProfile, WebChatSession, WebChatWorkspace } from '~/types/web-chat'
 import { buildSessionGroups } from '~/utils/sessionGroups'
@@ -302,7 +302,8 @@ function saveReadMessageCounts() {
 
 function markSessionRead(sessionId: string, messageCount: number) {
   if (!readMessageCountsLoaded.value) return
-  const currentCount = Math.max(0, messageCount || 0)
+  const session = sessions.value.find(session => session.id === sessionId)
+  const currentCount = readMessageCountForVisibleSession(session, messageCount)
   if (readMessageCounts.value[sessionId] === currentCount) return
   readMessageCounts.value = { ...readMessageCounts.value, [sessionId]: currentCount }
   saveReadMessageCounts()

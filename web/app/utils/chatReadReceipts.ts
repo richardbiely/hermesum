@@ -12,6 +12,13 @@ export function isSessionUnread(
   return Math.max(0, session.messageCount || 0) > Math.max(0, readMessageCounts[session.id] || 0)
 }
 
+export function readMessageCountForVisibleSession(
+  session: Pick<WebChatSession, 'messageCount'> | undefined,
+  observedMessageCount: number
+) {
+  return Math.max(0, observedMessageCount || 0, session?.messageCount || 0)
+}
+
 export function syncInitialReadMessageCounts(
   sessions: Pick<WebChatSession, 'id' | 'messageCount'>[],
   readMessageCounts: Record<string, number>

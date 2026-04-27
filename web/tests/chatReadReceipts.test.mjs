@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { isSessionUnread, syncInitialReadMessageCounts } from '../app/utils/chatReadReceipts.ts'
+import { isSessionUnread, readMessageCountForVisibleSession, syncInitialReadMessageCounts } from '../app/utils/chatReadReceipts.ts'
 
 test('does not mark active sessions read just because they are open', () => {
   assert.equal(isSessionUnread(
@@ -31,4 +31,10 @@ test('prompt unread keeps a session unread regardless of message count', () => {
     true,
     true
   ), true)
+})
+
+test('visible read receipts use the sidebar session count when it is newer than observed chat detail', () => {
+  assert.equal(readMessageCountForVisibleSession({ messageCount: 12 }, 10), 12)
+  assert.equal(readMessageCountForVisibleSession({ messageCount: 8 }, 10), 10)
+  assert.equal(readMessageCountForVisibleSession(undefined, 7), 7)
 })
