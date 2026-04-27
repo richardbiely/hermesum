@@ -18,7 +18,7 @@ test('scrolls the chat tree to bottom after the submitted message has rendered',
       waitForFrame: async () => calls.push('frame')
     })
 
-    assert.deepEqual(calls, ['dom', 'frame'])
+    assert.deepEqual(calls, ['dom', 'frame', 'frame', 'frame'])
     assert.equal(scrolledCount, 3)
     assert.equal(child.scrollTop, 700)
     assert.equal(parent.scrollTop, 900)
@@ -42,9 +42,36 @@ test('can wait for multiple layout frames before scrolling to bottom', async () 
       frameCount: 3
     })
 
-    assert.deepEqual(calls, ['dom', 'frame', 'frame', 'frame'])
+    assert.deepEqual(calls, ['dom', 'frame', 'frame', 'frame', 'frame', 'frame'])
     assert.equal(child.scrollTop, 700)
     assert.equal(page.scrollTop, 500)
+  } finally {
+    globalThis.document = previousDocument
+  }
+})
+
+test('keeps scrolling until late layout growth settles', async () => {
+  const calls = []
+  const page = { scrollHeight: 500, clientHeight: 100, scrollTop: 0 }
+  const child = { scrollHeight: 700, clientHeight: 200, scrollTop: 0, parentElement: null }
+  const previousDocument = globalThis.document
+  globalThis.document = { scrollingElement: page }
+
+  try {
+    await scrollElementTreeToBottomAfterRender(child, {
+      waitForDomUpdate: async () => calls.push('dom'),
+      waitForFrame: async () => {
+        calls.push('frame')
+        if (calls.length === 3) child.scrollHeight += 272
+      },
+      frameCount: 1,
+      stableFrameCount: 2,
+      maxFrameCount: 8
+    })
+
+    assert.equal(child.scrollTop, 972)
+    assert.equal(page.scrollTop, 500)
+    assert.ok(calls.length >= 5)
   } finally {
     globalThis.document = previousDocument
   }

@@ -297,8 +297,12 @@ async function scrollChatToBottomAfterRender() {
     waitForFrame: waitForAnimationFrame,
     frameCount: 3
   })
-  await new Promise<void>(resolve => setTimeout(resolve, 0))
-  scrollElementTreeToBottom(chatContainer.value)
+
+  for (const delay of [100, 350]) {
+    await new Promise<void>(resolve => setTimeout(resolve, delay))
+    scrollElementTreeToBottom(chatContainer.value)
+  }
+
   markCurrentSessionReadIfVisible()
 }
 

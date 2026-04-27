@@ -17,6 +17,8 @@ type BottomScrollOptions = {
   waitForDomUpdate?: () => Promise<void> | void
   waitForFrame?: () => Promise<void> | void
   frameCount?: number
+  stableFrameCount?: number
+  maxFrameCount?: number
 }
 
 type RectLike = {
@@ -29,22 +31,40 @@ type RectElement = {
   getBoundingClientRect?: () => RectLike
 }
 
-export function scrollElementTreeToBottom(element?: HTMLElement | null) {
-  const scrolled = new Set<Element>()
+function scrollableElementsFor(element?: HTMLElement | null) {
+  const elements: Element[] = []
   let current: HTMLElement | null = element ?? null
 
   while (current) {
-    if (current.scrollHeight > current.clientHeight) {
-      current.scrollTop = current.scrollHeight
-      scrolled.add(current)
-    }
+    if (current.scrollHeight > current.clientHeight) elements.push(current)
     current = current.parentElement
   }
 
   const scrollingElement = document.scrollingElement
-  if (scrollingElement && scrollingElement.scrollHeight > scrollingElement.clientHeight) {
-    scrollingElement.scrollTop = scrollingElement.scrollHeight
-    scrolled.add(scrollingElement)
+  if (scrollingElement && scrollingElement.scrollHeight > scrollingElement.clientHeight) elements.push(scrollingElement)
+
+  return elements
+}
+
+function scrollElementToBottom(element: Element) {
+  element.scrollTop = element.scrollHeight
+}
+
+function scrollDistanceFromBottom(element: Element) {
+  return Math.max(0, element.scrollHeight - element.clientHeight - element.scrollTop)
+}
+
+function scrollSnapshot(elements: Element[]) {
+  return elements.map(element => `${element.scrollHeight}:${element.clientHeight}:${Math.round(element.scrollTop)}`).join('|')
+}
+
+export function scrollElementTreeToBottom(element?: HTMLElement | null) {
+  const scrolled = new Set<Element>()
+  const elements = scrollableElementsFor(element)
+
+  for (const item of elements) {
+    scrollElementToBottom(item)
+    scrolled.add(item)
   }
 
   return scrolled.size
@@ -55,11 +75,33 @@ export async function scrollElementTreeToBottomAfterRender(
   options: BottomScrollOptions = {}
 ) {
   await options.waitForDomUpdate?.()
-  const frameCount = Math.max(1, options.frameCount ?? 1)
-  for (let index = 0; index < frameCount; index += 1) {
+
+  const initialFrameCount = Math.max(1, options.frameCount ?? 1)
+  for (let index = 0; index < initialFrameCount; index += 1) {
     await options.waitForFrame?.()
   }
-  return scrollElementTreeToBottom(element)
+
+  const stableFrameCount = Math.max(1, options.stableFrameCount ?? 2)
+  const maxFrameCount = Math.max(stableFrameCount, options.maxFrameCount ?? 12)
+  let stableFrames = 0
+  let previousSnapshot = ''
+  let scrolledCount = 0
+
+  for (let index = 0; index < maxFrameCount; index += 1) {
+    const elements = scrollableElementsFor(element)
+    for (const item of elements) scrollElementToBottom(item)
+    scrolledCount = new Set(elements).size
+
+    const nextSnapshot = scrollSnapshot(elements)
+    const isAtBottom = elements.every(item => scrollDistanceFromBottom(item) <= 1)
+    stableFrames = nextSnapshot === previousSnapshot && isAtBottom ? stableFrames + 1 : 0
+    previousSnapshot = nextSnapshot
+
+    if (stableFrames >= stableFrameCount) break
+    await options.waitForFrame?.()
+  }
+
+  return scrolledCount
 }
 
 export function nearestScrollableAncestor(element?: HTMLElement | null) {
