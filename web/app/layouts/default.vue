@@ -498,11 +498,12 @@ provide('refreshSessions', refresh)
             </template>
           </USelectMenu>
 
-          <div class="grid grid-cols-2 gap-2">
+          <div class="grid grid-cols-2 gap-1.5">
             <UButton
               block
               color="neutral"
               variant="soft"
+              size="xs"
               icon="i-lucide-plus"
               label="Chat"
               @click="startNewChat"
@@ -511,6 +512,7 @@ provide('refreshSessions', refresh)
               block
               color="neutral"
               variant="soft"
+              size="xs"
               icon="i-lucide-folder-plus"
               label="Workspace"
               @click="beginCreateWorkspace"
