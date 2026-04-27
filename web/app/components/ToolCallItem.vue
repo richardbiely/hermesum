@@ -2,8 +2,8 @@
 import type { WebChatPart } from '~/types/web-chat'
 import type { ToolDetailSection } from '~/utils/toolCallDetails'
 import { writeClipboardText } from '~/utils/clipboard'
-import { toolDisplayName } from '~/utils/toolCalls'
-import { hasDetailValue, toolDetailSections, valueSummary } from '~/utils/toolCallDetails'
+import { toolCallTitle, toolDisplayName, toolOutputSummary } from '~/utils/toolCalls'
+import { toolDetailSections } from '~/utils/toolCallDetails'
 
 const props = defineProps<{
   part: WebChatPart
@@ -43,18 +43,11 @@ onBeforeUnmount(() => {
 const sections = computed(() => toolDetailSections(props.part))
 
 const summary = computed(() => {
-  if (isRunning.value) return valueSummary(props.part.input) || 'Running'
-
-  const output = props.part.output
-  if (hasDetailValue(output)) return valueSummary(output)
-
-  const input = props.part.input
-  if (hasDetailValue(input)) return valueSummary(input)
-
-  return props.part.status || 'Details'
+  if (isRunning.value) return 'Running'
+  return toolOutputSummary(props.part)
 })
 
-const actionLabel = computed(() => `${isRunning.value ? 'Running' : 'Ran'} ${toolName.value}`)
+const actionLabel = computed(() => toolCallTitle(props.part))
 </script>
 
 <template>
