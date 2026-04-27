@@ -454,14 +454,17 @@ provide('markSessionRead', markSessionRead)
   <UDashboardGroup>
     <UDashboardSidebar collapsible :default-size="20">
       <template #header>
-        <NuxtLink to="/" class="flex h-8 shrink-0 items-center gap-2 px-2">
-          <UIcon name="i-lucide-sparkles" class="size-5 shrink-0 text-primary" />
-          <span class="truncate font-semibold">Hermes Agent</span>
+        <NuxtLink to="/" class="flex h-8 w-full shrink-0 items-center px-2">
+          <img
+            src="/logo.svg"
+            alt="Hermes Agent"
+            class="h-auto w-full object-contain"
+          >
         </NuxtLink>
       </template>
 
       <template #default>
-        <div class="space-y-2 px-2 pb-3 pt-1">
+        <div class="-mt-2 space-y-2 px-2 pb-3">
           <USelectMenu
             :model-value="selectedProfile"
             :items="profileOptions"
