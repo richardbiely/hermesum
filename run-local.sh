@@ -15,6 +15,7 @@ HERMES_SESSION_TOKEN_OVERRIDE="${HERMES_DEV_SESSION_TOKEN:-}"
 WEB_DEV_PID=""
 OPEN_BROWSER="${OPEN_BROWSER:-1}"
 PORT_STOP_TIMEOUT="${PORT_STOP_TIMEOUT:-5}"
+STARTUP_TIMEOUT="${STARTUP_TIMEOUT:-30}"
 DASHBOARD_STARTED=0
 WEB_DEV_STARTED=0
 
@@ -33,6 +34,7 @@ Environment:
   WEB_DEV_PORT            Nuxt dev server port for --dev. Default: 3019.
   WATCH_INTERVAL          Poll interval in seconds in watch mode. Default: 1.
   PORT_STOP_TIMEOUT       Seconds to wait before force-stopping stale listeners. Default: 5.
+  STARTUP_TIMEOUT         Seconds to wait for a started service port before opening the UI. Default: 30.
   OPEN_BROWSER            Open the UI once on initial startup. Default: 1. Set 0 to disable.
 EOF
 }
@@ -336,6 +338,34 @@ open_browser_once() {
   fi
 }
 
+wait_for_port() {
+  local target_port="$1"
+  local service_name="$2"
+  local timeout="${3:-$STARTUP_TIMEOUT}"
+  local deadline=$((SECONDS + timeout))
+
+  echo "Waiting for $service_name on port $target_port..."
+  while [[ "$SECONDS" -lt "$deadline" ]]; do
+    if "$PYTHON" - "$target_port" <<'PY' >/dev/null 2>&1
+import socket
+import sys
+
+port = int(sys.argv[1])
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    sock.settimeout(0.2)
+    sys.exit(0 if sock.connect_ex(("127.0.0.1", port)) == 0 else 1)
+PY
+    then
+      echo "$service_name is ready on http://127.0.0.1:$target_port"
+      return 0
+    fi
+    sleep 0.2
+  done
+
+  echo "Warning: timed out waiting for $service_name on port $target_port" >&2
+  return 1
+}
+
 kill_existing_port_processes() {
   local target_port="${1:-$PORT}"
   if ! command -v lsof >/dev/null 2>&1; then
@@ -427,18 +457,18 @@ cleanup_and_exit() {
 }
 
 run_once() {
+  trap cleanup EXIT
+  trap cleanup_and_exit INT TERM TSTP
+
   prepare_runtime
   ensure_web_build
   kill_existing_port_processes "$PORT"
   echo "Starting Hermes dashboard with Nuxt prototype on http://127.0.0.1:$PORT"
-  echo "Runtime copy: $RUNTIME"
-  echo "Source checkout is only read/copied, not modified: $UPSTREAM"
-  cd "$RUNTIME"
-  local dashboard_args=(dashboard --port "$PORT")
-  if [[ "$OPEN_BROWSER" == "0" ]]; then
-    dashboard_args+=(--no-open)
+  start_dashboard
+  if wait_for_port "$PORT" "Hermes dashboard"; then
+    open_browser_once "http://127.0.0.1:$PORT"
   fi
-  HERMES_WEB_DIST="$WEB/.output/public" "$PYTHON" -m hermes_cli.main "${dashboard_args[@]}"
+  wait "$CHILD_PID"
 }
 
 run_watch() {
@@ -451,7 +481,9 @@ run_watch() {
   local current_sig
   current_sig="$(watch_signature)"
   start_dashboard
-  open_browser_once "http://127.0.0.1:$PORT"
+  if wait_for_port "$PORT" "Hermes dashboard"; then
+    open_browser_once "http://127.0.0.1:$PORT"
+  fi
 
   while true; do
     sleep "$WATCH_INTERVAL"
@@ -495,7 +527,10 @@ run_dev() {
   current_sig="$(watch_signature)"
   start_dashboard
   start_nuxt_dev
-  open_browser_once "http://127.0.0.1:$WEB_DEV_PORT"
+  wait_for_port "$PORT" "Hermes dashboard backend" || true
+  if wait_for_port "$WEB_DEV_PORT" "Nuxt dev server"; then
+    open_browser_once "http://127.0.0.1:$WEB_DEV_PORT"
+  fi
 
   echo ""
   echo "Fast dev mode ready: http://127.0.0.1:$WEB_DEV_PORT"
