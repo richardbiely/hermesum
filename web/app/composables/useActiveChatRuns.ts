@@ -1,5 +1,5 @@
 import type { InteractivePrompt } from '~/types/web-chat'
-import { playNotificationSound } from '../utils/notificationSound'
+import { notificationSoundVariant, playNotificationSound } from '../utils/notificationSound'
 import { createRunEventReplay } from '../utils/runEventReplay'
 
 type RunEventPayload = Record<string, unknown>
@@ -70,6 +70,22 @@ function closeTrackedRun(runId: string) {
 function isActiveVisibleChat(sessionId: string) {
   if (import.meta.server) return false
   return !document.hidden && document.hasFocus() && window.location.pathname === `/chat/${sessionId}`
+}
+
+function isLatestContentVisible() {
+  if (import.meta.server) return false
+  const chatPanel = [...document.querySelectorAll<HTMLElement>('*')]
+    .find(element => element.scrollHeight > element.clientHeight && getComputedStyle(element).overflowY !== 'visible' && element.getBoundingClientRect().left > 200)
+  if (!chatPanel) return true
+
+  return chatPanel.scrollHeight - chatPanel.clientHeight - chatPanel.scrollTop < 48
+}
+
+function runNotificationVariant(sessionId: string) {
+  return notificationSoundVariant({
+    activeVisibleChat: isActiveVisibleChat(sessionId),
+    latestContentVisible: isLatestContentVisible()
+  })
 }
 
 function promptFromPayload(payload: RunEventPayload) {
@@ -151,7 +167,7 @@ export function useActiveChatRuns() {
 
     source.addEventListener('message.completed', (event) => {
       const payload = parsePayload(event)
-      playNotificationSound(isActiveVisibleChat(run.sessionId) ? 'default' : 'attention')
+      playNotificationSound(runNotificationVariant(run.sessionId))
       recordAndNotify(run, 'onCompleted', typeof payload.content === 'string' ? payload.content : undefined)
     })
 
@@ -178,7 +194,7 @@ export function useActiveChatRuns() {
       const prompt = promptFromPayload(payload)
       if (!prompt) return
       if (!isActiveVisibleChat(run.sessionId)) markPromptUnread(run.sessionId)
-      playNotificationSound(isActiveVisibleChat(run.sessionId) ? 'default' : 'attention')
+      playNotificationSound(runNotificationVariant(run.sessionId))
       recordAndNotify(run, 'onPromptRequested', prompt)
     })
 

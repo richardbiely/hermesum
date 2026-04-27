@@ -1,4 +1,9 @@
-type NotificationSoundVariant = 'default' | 'attention'
+export type NotificationSoundVariant = 'default' | 'attention'
+
+type NotificationSoundState = {
+  activeVisibleChat: boolean
+  latestContentVisible: boolean
+}
 
 type Tone = {
   offset: number
@@ -13,6 +18,10 @@ let lastPlayedAt = 0
 function getAudioContext() {
   audioContext ||= new AudioContext()
   return audioContext
+}
+
+export function notificationSoundVariant(state: NotificationSoundState): NotificationSoundVariant {
+  return state.activeVisibleChat && state.latestContentVisible ? 'default' : 'attention'
 }
 
 function tonesForVariant(variant: NotificationSoundVariant): Tone[] {
