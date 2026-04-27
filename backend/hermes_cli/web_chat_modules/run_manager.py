@@ -169,8 +169,7 @@ class RunManager:
             )
             self._services.set_session_title_safely(db, session_id, self._services.title_from_message(request.input))
 
-        isolated_workspace = self._services.ensure_session_worktree(db, session_id, workspace_path, profile)
-        execution_workspace_path = isolated_workspace.worktreePath if isolated_workspace else workspace_path
+        execution_workspace_path = workspace_path
 
         user_message_id = None
         if not request.editedMessageId:
@@ -198,8 +197,8 @@ class RunManager:
             input=effective_input,
             workspace=execution_workspace_path,
             source_workspace=workspace_path,
-            source_git_root=isolated_workspace.sourceGitRoot if isolated_workspace else None,
-            isolated_workspace=isolated_workspace.worktreePath if isolated_workspace else None,
+            source_git_root=None,
+            isolated_workspace=None,
             profile=profile,
             attachments=[attachment.id for attachment in attachments] or None,
             model=effective_model,

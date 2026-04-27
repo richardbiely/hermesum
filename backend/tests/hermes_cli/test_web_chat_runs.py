@@ -192,62 +192,14 @@ def test_start_run_persists_workspace_changes_with_patch(client, monkeypatch, tm
     assert "+new" in patch_by_path["created.txt"]
 
 
-def test_runs_use_isolated_worktrees_per_chat(client, monkeypatch, tmp_path):
+def test_runs_edit_source_workspace_and_persist_history(client, monkeypatch, tmp_path):
     import hermes_cli.web_chat as web_chat
 
-    monkeypatch.setenv("HERMES_WEB_CHAT_WORKTREE_ROOT", str(tmp_path / "worktrees"))
+    worktree_root = tmp_path / "worktrees"
+    monkeypatch.setenv("HERMES_WEB_CHAT_WORKTREE_ROOT", str(worktree_root))
     repo = tmp_path / "repo"
     repo.mkdir()
     subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
-    (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "-m", "initial"],
-        check=True,
-        capture_output=True,
-    )
-    seen_workspaces = []
-
-    def fake_executor(context, emit):
-        workspace = Path(context.workspace)
-        seen_workspaces.append(workspace)
-        assert context.source_workspace == str(repo)
-        assert workspace != repo
-        (workspace / "tracked.txt").write_text(f"base\n{context.session_id}\n", encoding="utf-8")
-        return "Done"
-
-    monkeypatch.setattr(web_chat, "run_manager", web_chat.RunManager(fake_executor))
-    first = client.post("/api/web-chat/runs", json={"input": "First", "workspace": str(repo)})
-    second = client.post("/api/web-chat/runs", json={"input": "Second", "workspace": str(repo)})
-    assert first.status_code == 202
-    assert second.status_code == 202
-    with client.stream("GET", f"/api/web-chat/runs/{first.json()['runId']}/events") as stream:
-        stream.read()
-    with client.stream("GET", f"/api/web-chat/runs/{second.json()['runId']}/events") as stream:
-        stream.read()
-
-    assert len(seen_workspaces) == 2
-    assert seen_workspaces[0] != seen_workspaces[1]
-    assert seen_workspaces[0].is_dir()
-    assert seen_workspaces[1].is_dir()
-    assert (repo / "tracked.txt").read_text(encoding="utf-8") == "base\n"
-
-    first_detail = client.get(f"/api/web-chat/sessions/{first.json()['sessionId']}?includeWorkspaceChanges=true").json()
-    second_detail = client.get(f"/api/web-chat/sessions/{second.json()['sessionId']}?includeWorkspaceChanges=true").json()
-    first_changes = first_detail["messages"][1]["parts"][1]["changes"]
-    second_changes = second_detail["messages"][1]["parts"][1]["changes"]
-    assert first_changes["workspace"] == str(repo)
-    assert second_changes["workspace"] == str(repo)
-    assert first.json()["sessionId"] in first_changes["patch"]["files"][0]["patch"]
-    assert second.json()["sessionId"] in second_changes["patch"]["files"][0]["patch"]
-    assert first_detail["isolatedWorkspace"]["worktreePath"] == str(seen_workspaces[0])
-
-
-def test_isolated_worktree_defaults_to_project_hermes_dir(client, monkeypatch, tmp_path):
-    import hermes_cli.web_chat as web_chat
-
-    monkeypatch.delenv("HERMES_WEB_CHAT_WORKTREE_ROOT", raising=False)
-    repo = git_repo(tmp_path)
     (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
     subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
     subprocess.run(
@@ -260,27 +212,39 @@ def test_isolated_worktree_defaults_to_project_hermes_dir(client, monkeypatch, t
     def fake_executor(context, emit):
         workspace = Path(context.workspace)
         seen["workspace"] = workspace
-        (workspace / "tracked.txt").write_text("base\nproject-local\n", encoding="utf-8")
+        seen["source_workspace"] = context.source_workspace
+        seen["isolated_workspace"] = context.isolated_workspace
+        (workspace / "tracked.txt").write_text("base\nedited in source\n", encoding="utf-8")
         return "Done"
 
     monkeypatch.setattr(web_chat, "run_manager", web_chat.RunManager(fake_executor))
-    start = client.post("/api/web-chat/runs", json={"input": "Change", "workspace": str(repo)}).json()
+    response = client.post("/api/web-chat/runs", json={"input": "Change", "workspace": str(repo)})
+    assert response.status_code == 202
+    start = response.json()
     with client.stream("GET", f"/api/web-chat/runs/{start['runId']}/events") as stream:
         stream.read()
 
-    expected_root = repo / ".hermes" / "web-chat" / "worktrees"
-    assert seen["workspace"].is_relative_to(expected_root)
-    source_status = subprocess.run(
-        ["git", "-C", str(repo), "status", "--porcelain=v1"],
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    assert source_status.stdout == ""
+    assert seen == {
+        "workspace": repo,
+        "source_workspace": str(repo),
+        "isolated_workspace": None,
+    }
+    assert not worktree_root.exists()
+    assert (repo / "tracked.txt").read_text(encoding="utf-8") == "base\nedited in source\n"
+
+    detail = client.get(f"/api/web-chat/sessions/{start['sessionId']}?includeWorkspaceChanges=true").json()
+    assert detail["isolatedWorkspace"] is None
+    changes = detail["messages"][1]["parts"][1]["changes"]
+    assert changes["workspace"] == str(repo)
+    assert changes["runId"] == start["runId"]
+    assert changes["files"] == [
+        {"path": "tracked.txt", "status": "edited", "additions": 1, "deletions": 0},
+    ]
+    assert "+edited in source" in changes["patch"]["files"][0]["patch"]
 
 
 
-def test_delete_session_removes_isolated_worktree(client, monkeypatch, tmp_path):
+def test_delete_session_does_not_remove_source_workspace(client, monkeypatch, tmp_path):
     import hermes_cli.web_chat as web_chat
 
     monkeypatch.setenv("HERMES_WEB_CHAT_WORKTREE_ROOT", str(tmp_path / "worktrees"))
@@ -306,13 +270,14 @@ def test_delete_session_removes_isolated_worktree(client, monkeypatch, tmp_path)
     start = client.post("/api/web-chat/runs", json={"input": "Change", "workspace": str(repo)}).json()
     with client.stream("GET", f"/api/web-chat/runs/{start['runId']}/events") as stream:
         stream.read()
-    assert seen["workspace"].is_dir()
+    assert seen["workspace"] == repo
 
     response = client.delete(f"/api/web-chat/sessions/{start['sessionId']}")
 
     assert response.status_code == 200
     assert response.json() == {"ok": True}
-    assert not seen["workspace"].exists()
+    assert repo.exists()
+    assert (repo / "tracked.txt").read_text(encoding="utf-8") == "base\ndirty\n"
 
 
 def test_start_run_reports_later_edits_when_git_status_is_already_dirty(client, monkeypatch, tmp_path):
