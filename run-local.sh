@@ -11,8 +11,9 @@ PYTHON="$UPSTREAM/venv/bin/python"
 WATCH=0
 DEV=0
 WATCH_INTERVAL="${WATCH_INTERVAL:-1}"
-HERMES_SESSION_TOKEN_OVERRIDE=""
+HERMES_SESSION_TOKEN_OVERRIDE="${HERMES_DEV_SESSION_TOKEN:-}"
 WEB_DEV_PID=""
+OPEN_BROWSER="${OPEN_BROWSER:-1}"
 
 usage() {
   cat <<EOF
@@ -28,6 +29,7 @@ Environment:
   PORT                    Dashboard port. Default: 9119.
   WEB_DEV_PORT            Nuxt dev server port for --dev. Default: 3019.
   WATCH_INTERVAL          Poll interval in seconds in watch mode. Default: 1.
+  OPEN_BROWSER            Open the UI once on initial startup. Default: 1. Set 0 to disable.
 EOF
 }
 
@@ -296,7 +298,7 @@ start_dashboard() {
     if [[ -n "${HERMES_SESSION_TOKEN_OVERRIDE:-}" ]]; then
       env_args+=("HERMES_SESSION_TOKEN=$HERMES_SESSION_TOKEN_OVERRIDE")
     fi
-    env "${env_args[@]}" "$PYTHON" -m hermes_cli.main dashboard --port "$PORT"
+    env "${env_args[@]}" "$PYTHON" -m hermes_cli.main dashboard --port "$PORT" --no-open
   ) &
   CHILD_PID=$!
 }
@@ -307,6 +309,21 @@ stop_dashboard() {
     wait "$CHILD_PID" 2>/dev/null || true
   fi
   CHILD_PID=""
+}
+
+open_browser_once() {
+  local url="$1"
+
+  if [[ "$OPEN_BROWSER" == "0" ]]; then
+    return
+  fi
+
+  if command -v open >/dev/null 2>&1; then
+    echo "Opening $url"
+    open "$url" >/dev/null 2>&1 || true
+  else
+    echo "Open manually: $url"
+  fi
 }
 
 kill_existing_port_processes() {
@@ -362,7 +379,11 @@ run_once() {
   echo "Runtime copy: $RUNTIME"
   echo "Source checkout is only read/copied, not modified: $UPSTREAM"
   cd "$RUNTIME"
-  HERMES_WEB_DIST="$WEB/.output/public" "$PYTHON" -m hermes_cli.main dashboard --port "$PORT"
+  local dashboard_args=(dashboard --port "$PORT")
+  if [[ "$OPEN_BROWSER" == "0" ]]; then
+    dashboard_args+=(--no-open)
+  fi
+  HERMES_WEB_DIST="$WEB/.output/public" "$PYTHON" -m hermes_cli.main "${dashboard_args[@]}"
 }
 
 run_watch() {
@@ -374,6 +395,7 @@ run_watch() {
   local current_sig
   current_sig="$(watch_signature)"
   start_dashboard
+  open_browser_once "http://127.0.0.1:$PORT"
 
   while true; do
     sleep "$WATCH_INTERVAL"
@@ -416,6 +438,7 @@ run_dev() {
   current_sig="$(watch_signature)"
   start_dashboard
   start_nuxt_dev
+  open_browser_once "http://127.0.0.1:$WEB_DEV_PORT"
 
   echo ""
   echo "Fast dev mode ready: http://127.0.0.1:$WEB_DEV_PORT"
