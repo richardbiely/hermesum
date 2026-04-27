@@ -4,7 +4,7 @@ import { recoverActiveRun } from '../../utils/activeRunRecovery'
 import { connectRouteRun } from '../../utils/routeRunConnection'
 import type { WebChatAttachment, WebChatMessage } from '~/types/web-chat'
 import type { QueuedMessage } from '~/utils/queuedMessages'
-import { messageText } from '~/utils/chatMessages'
+import { latestChangePartKey, messageText } from '~/utils/chatMessages'
 import { writeClipboardText } from '~/utils/clipboard'
 import { mergeOptimisticUserMessages } from '~/utils/optimisticChatMessages'
 import { markLocalMessageFailed, markLocalMessageSending, removeLocalMessage } from '~/utils/failedChatMessages'
@@ -85,6 +85,7 @@ const {
   activeChatRuns
 })
 const error = computed(() => streamError.value)
+const latestGitChangePartKey = computed(() => latestChangePartKey(messages.value))
 const chatMessagesStatus = computed(() => chatStatus.value === 'submitted' ? 'streaming' : chatStatus.value)
 const showSubmittedIndicator = computed(() => chatStatus.value === 'submitted')
 const {
@@ -677,6 +678,7 @@ onBeforeUnmount(() => {
                 :editing-message-id="editingMessageId"
                 :saving-edited-message-id="savingEditedMessageId"
                 :is-running="isRunning"
+                :latest-change-part-key="latestGitChangePartKey"
                 :set-editing-message-container="setEditingMessageContainer"
                 @copy="copyUserMessage"
                 @edit="startEditingMessage"

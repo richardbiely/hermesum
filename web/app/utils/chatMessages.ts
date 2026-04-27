@@ -30,6 +30,24 @@ export function groupMessageParts(parts: WebChatPart[]): MessagePartGroup[] {
   return groups
 }
 
+export function messagePartKey(message: WebChatMessage, part: WebChatPart) {
+  const partIndex = message.parts.indexOf(part)
+  return partIndex >= 0 ? `${message.id}:${partIndex}` : null
+}
+
+export function latestChangePartKey(messages: WebChatMessage[]) {
+  for (let messageIndex = messages.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const message = messages[messageIndex]
+    if (!message) continue
+    for (let partIndex = message.parts.length - 1; partIndex >= 0; partIndex -= 1) {
+      const part = message.parts[partIndex]
+      if (part?.type === 'changes' && part.changes?.files?.length) return `${message.id}:${partIndex}`
+    }
+  }
+
+  return null
+}
+
 function toolName(part: WebChatPart) {
   return String(part.name || '').toLowerCase()
 }

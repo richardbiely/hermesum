@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { formatMessageTimestamp, groupMessageParts, messageText, processGroupSummary } from '../app/utils/chatMessages.ts'
+import { formatMessageTimestamp, groupMessageParts, latestChangePartKey, messagePartKey, messageText, processGroupSummary } from '../app/utils/chatMessages.ts'
 
 test('groups consecutive process parts together', () => {
   const groups = groupMessageParts([
@@ -73,6 +73,29 @@ test('summarizes unknown process tools with fallback action count', () => {
     { type: 'tool', name: 'custom_tool', status: 'completed' },
     { type: 'tool', name: 'another_tool', status: 'completed' }
   ]), '2 actions · completed')
+})
+
+test('finds the newest git changes part across messages', () => {
+  const firstChange = { type: 'changes', changes: { files: [{ path: 'old.ts' }], totalFiles: 1 } }
+  const latestChange = { type: 'changes', changes: { files: [{ path: 'new.ts' }], totalFiles: 1 } }
+  const messages = [
+    { id: 'message-1', role: 'assistant', createdAt: '2026-01-01T10:00:00.000Z', parts: [firstChange] },
+    { id: 'message-2', role: 'assistant', createdAt: '2026-01-01T10:01:00.000Z', parts: [{ type: 'text', text: 'Done' }, latestChange] }
+  ]
+
+  assert.equal(messagePartKey(messages[0], firstChange), 'message-1:0')
+  assert.equal(latestChangePartKey(messages), 'message-2:1')
+})
+
+test('ignores empty git changes when finding the newest change part', () => {
+  assert.equal(latestChangePartKey([
+    {
+      id: 'message-1',
+      role: 'assistant',
+      createdAt: '2026-01-01T10:00:00.000Z',
+      parts: [{ type: 'changes', changes: { files: [], totalFiles: 0 } }]
+    }
+  ]), null)
 })
 
 test('joins only text message parts with blank lines', () => {

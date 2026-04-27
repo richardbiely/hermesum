@@ -4,12 +4,20 @@ import type { WebChatPatch, WebChatWorkspaceChanges } from '~/types/web-chat'
 type FileChange = WebChatWorkspaceChanges['files'][number]
 type PatchFile = WebChatPatch['files'][number]
 
-const props = defineProps<{
+const props = withDefaults(defineProps<{
   changes: WebChatWorkspaceChanges
-}>()
+  initiallyOpen?: boolean
+}>(), {
+  initiallyOpen: true
+})
 
-const open = ref(true)
+const userChangedOpen = ref(false)
+const open = ref(props.initiallyOpen)
 const expandedFiles = ref<Set<string>>(new Set())
+
+watch(() => props.initiallyOpen, (initiallyOpen) => {
+  if (!userChangedOpen.value) open.value = initiallyOpen
+})
 
 const changedFiles = computed(() => props.changes.files)
 const patchByPath = computed(() => {
@@ -59,6 +67,11 @@ function toggleFile(file: FileChange) {
   expandedFiles.value = next
 }
 
+function toggleOpen() {
+  userChangedOpen.value = true
+  open.value = !open.value
+}
+
 function patchFor(file: FileChange) {
   return patchByPath.value.get(file.path)
 }
@@ -83,7 +96,7 @@ function diffLineClass(line: string) {
     <button
       type="button"
       class="flex w-full items-center justify-between gap-3 px-3 py-2 text-left hover:bg-muted/50"
-      @click="open = !open"
+      @click="toggleOpen"
     >
       <span class="flex min-w-0 items-center gap-2">
         <UIcon name="i-lucide-files" class="size-4 shrink-0 text-muted" />

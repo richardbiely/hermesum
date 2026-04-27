@@ -1,18 +1,23 @@
 <script setup lang="ts">
 import highlight from '@comark/nuxt/plugins/highlight'
-import type { WebChatMessage } from '~/types/web-chat'
-import { formatMessageTimestamp, groupMessageParts, messageTimestampTitle, partText } from '~/utils/chatMessages'
+import type { WebChatMessage, WebChatPart } from '~/types/web-chat'
+import { formatMessageTimestamp, groupMessageParts, messagePartKey, messageTimestampTitle, partText } from '~/utils/chatMessages'
 
 const editingText = defineModel<string>('editingText', { required: true })
 
-defineProps<{
+const props = defineProps<{
   message: WebChatMessage
   copiedMessageId: string | null
   editingMessageId: string | null
   savingEditedMessageId: string | null
   isRunning: boolean
   setEditingMessageContainer: (el: unknown) => void
+  latestChangePartKey: string | null
 }>()
+
+function isLatestChangePart(message: WebChatMessage, part: WebChatPart) {
+  return messagePartKey(message, part) === props.latestChangePartKey
+}
 
 const emit = defineEmits<{
   copy: [message: WebChatMessage]
@@ -44,6 +49,7 @@ const emit = defineEmits<{
       <ChatChangeSummary
         v-else-if="group.part.type === 'changes' && group.part.changes"
         :changes="group.part.changes"
+        :initially-open="isLatestChangePart(message, group.part)"
       />
 
       <InteractivePromptCard

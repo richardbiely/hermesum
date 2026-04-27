@@ -1,4 +1,5 @@
 import type { AgentStatusEvent, InteractivePrompt, WebChatWorkspaceChanges } from '~/types/web-chat'
+import { reconcileRunSession } from '../utils/activeRunSession'
 import { notificationSoundVariant, playNotificationSound } from '../utils/notificationSound'
 import { createRunEventReplay } from '../utils/runEventReplay'
 
@@ -119,6 +120,22 @@ export function useActiveChatRuns() {
     runningSessionIds.value = runningSessionIds.value.filter(id => id !== sessionId)
   }
 
+  function retargetRunFromEvent(run: TrackedRun, payload: RunEventPayload) {
+    const oldSessionId = run.sessionId
+    const oldSessionStillRunning = [...trackedRuns.values()].some(candidate => candidate !== run && candidate.sessionId === oldSessionId)
+    const reconciled = reconcileRunSession({
+      trackedSessionId: oldSessionId,
+      eventSessionId: payload.sessionId,
+      runningSessionIds: runningSessionIds.value,
+      oldSessionStillRunning
+    })
+    if (!reconciled.clearSubscribers) return
+
+    run.sessionId = reconciled.sessionId
+    runningSessionIds.value = reconciled.runningSessionIds
+    run.subscribers.clear()
+  }
+
   function isRunning(sessionId: string) {
     return runningSessionIds.value.includes(sessionId)
   }
@@ -169,16 +186,19 @@ export function useActiveChatRuns() {
 
     source.addEventListener('message.delta', (event) => {
       const payload = parsePayload(event)
+      retargetRunFromEvent(run, payload)
       recordAndNotify(run, 'onDelta', String(payload.content || ''))
     })
 
     source.addEventListener('reasoning.delta', (event) => {
       const payload = parsePayload(event)
+      retargetRunFromEvent(run, payload)
       recordAndNotify(run, 'onReasoningDelta', String(payload.content || ''))
     })
 
     source.addEventListener('message.completed', (event) => {
       const payload = parsePayload(event)
+      retargetRunFromEvent(run, payload)
       playNotificationSound(runNotificationVariant(run.sessionId))
       recordAndNotify(run, 'onCompleted', {
         content: typeof payload.content === 'string' ? payload.content : undefined,
@@ -188,6 +208,7 @@ export function useActiveChatRuns() {
 
     source.addEventListener('tool.started', (event) => {
       const payload = parsePayload(event)
+      retargetRunFromEvent(run, payload)
       recordAndNotify(run, 'onToolStarted', {
         name: typeof payload.name === 'string' ? payload.name : undefined,
         preview: typeof payload.preview === 'string' ? payload.preview : undefined,
@@ -197,6 +218,7 @@ export function useActiveChatRuns() {
 
     source.addEventListener('tool.completed', (event) => {
       const payload = parsePayload(event)
+      retargetRunFromEvent(run, payload)
       recordAndNotify(run, 'onToolCompleted', {
         name: typeof payload.name === 'string' ? payload.name : undefined,
         preview: typeof payload.preview === 'string' ? payload.preview : undefined,
@@ -205,13 +227,16 @@ export function useActiveChatRuns() {
     })
 
     source.addEventListener('agent.status', (event) => {
-      const payload = statusFromPayload(parsePayload(event))
-      if (!payload) return
-      recordAndNotify(run, 'onStatus', payload)
+      const payload = parsePayload(event)
+      retargetRunFromEvent(run, payload)
+      const status = statusFromPayload(payload)
+      if (!status) return
+      recordAndNotify(run, 'onStatus', status)
     })
 
     source.addEventListener('prompt.requested', (event) => {
       const payload = parsePayload(event)
+      retargetRunFromEvent(run, payload)
       const prompt = promptFromPayload(payload)
       if (!prompt) return
       if (!isActiveVisibleChat(run.sessionId)) markPromptUnread(run.sessionId)
@@ -221,6 +246,7 @@ export function useActiveChatRuns() {
 
     const updatePrompt = (event: Event) => {
       const payload = parsePayload(event)
+      retargetRunFromEvent(run, payload)
       const prompt = promptFromPayload(payload)
       if (!prompt) return
       recordAndNotify(run, 'onPromptUpdated', prompt)
@@ -230,11 +256,18 @@ export function useActiveChatRuns() {
     source.addEventListener('prompt.expired', updatePrompt)
     source.addEventListener('prompt.cancelled', updatePrompt)
 
-    source.addEventListener('run.completed', () => finishRun(run))
-    source.addEventListener('run.stopped', () => finishRun(run))
+    source.addEventListener('run.completed', (event) => {
+      retargetRunFromEvent(run, parsePayload(event))
+      finishRun(run)
+    })
+    source.addEventListener('run.stopped', (event) => {
+      retargetRunFromEvent(run, parsePayload(event))
+      finishRun(run)
+    })
 
     source.addEventListener('run.failed', (event) => {
       const payload = parsePayload(event)
+      retargetRunFromEvent(run, payload)
       const error = new Error(typeof payload.error === 'string' ? payload.error : 'Run failed')
       notify(run, subscriber => subscriber.onError?.(error))
       finishRun(run)
