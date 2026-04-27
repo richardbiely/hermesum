@@ -1,112 +1,104 @@
-# Hermes Agent Nuxt Chat Prototype
+# Hermesum
 
-This directory contains the project-local prototype for a native Nuxt UI chat interface for Hermes Agent.
+Hermesum is a native web chat prototype for Hermes Agent: a cleaner, faster, more product-like interface for running agent conversations, streaming responses, tracking tool calls, and reviewing workspace changes in one place.
+
+It combines:
+
+- a modern web frontend built for a focused chat experience
+- a FastAPI web-chat API designed to mirror real Hermes runtime behavior
+- a local runtime bridge that patches a disposable Hermes copy instead of touching your real checkout
 
 ## Preview
 
 <p>
-  <img src="docs/assets/agent1.png" alt="Hermes Agent chat preview" width="49%">
-  <img src="docs/assets/agent2.png" alt="Hermes Agent workspace changes preview" width="49%">
+  <img src="docs/assets/agent1.png" alt="Hermesum chat preview" width="49%">
+  <img src="docs/assets/agent2.png" alt="Hermesum workspace changes preview" width="49%">
 </p>
 
-Do **not** edit `$HOME/.hermes/hermes-agent` directly during prototype work. Treat this repository as the source of truth and move changes with normal git workflow.
+## Why Hermesum
 
-## Layout
+Hermes Agent is powerful, but the prototype goal here is not just "make it work in a browser". The goal is to make it feel like a real product:
 
-```text
-backend/
-  hermes_cli/web_chat.py                    # FastAPI router entrypoint and domain orchestration
-  hermes_cli/web_chat_modules/              # extracted web-chat route registration, agent execution, capabilities, profiles, commands, models, sessions/session handlers, session/message mutations, git changes/patches/persistence, workspace/settings, attachment, and run lifecycle helpers
-  tests/hermes_cli/test_web_chat*.py        # web-chat pytest coverage split by domain
-web/                                        # Nuxt UI prototype
-  app/components/WorkspaceModal.vue         # workspace create/edit modal
-  app/components/SidebarSessionGroups.vue   # sidebar workspace groups and chat row actions
-  app/components/ChatMessageContent.vue      # chat message rendering and user-message actions
-  app/components/ChatSlashCommandMenu.vue    # slash-command autocomplete menu
-  app/components/ChatAttachmentList.vue      # composer attachment chips
-  app/components/ToolCallDetailSection.vue   # tool-call detail modal payload section
-  app/composables/useChatRunMessages.ts      # chat run streaming message state and autoscroll handling
-  app/composables/useChatSlashCommandSubmission.ts # slash-command submit and keyboard handling
-  app/composables/useChatMessageEditing.ts   # user-message edit state, layout, and rerun handling
-  app/components/ChatRenameModal.vue        # chat rename modal
-  app/components/ChatConfirmActionModal.vue # chat duplicate/delete confirmation modal
-  app/utils/chatMessages.ts                 # pure chat message formatting/grouping helpers
-  app/utils/toolCallDetails.ts              # pure tool-call detail formatting helpers
-  app/utils/clipboard.ts                    # clipboard helper used by chat actions
-```
+- chat-first UX for day-to-day agent work
+- streaming responses over SSE with explicit run lifecycle handling
+- queued follow-up messages and steerable in-flight runs
+- visible reasoning and tool-call output
+- first-class workspace diff and git-changes visibility
+- workspace-aware sessions and project switching
+- attachment upload and inline preview
+- disposable runtime integration for safe local iteration
 
-Keep `README.md` updated as the prototype changes, including project structure, setup, workflow, implemented behavior, and verification commands.
+If someone lands on this repository, they should immediately understand that Hermesum is a serious prototype for a native Hermes chat experience, not a throwaway demo.
 
-## Implemented backend prototype
+## What Exists Today
+
+### Frontend
+
+- web chat UI in [`web/`](web)
+- SSE run streaming with explicit stop handling
+- queued messages support for chat continuation and steer flows
+- authenticated same-origin API access
+- workspace/session management flows
+- git changes and workspace change review surfaces
+- attachment chips, previews, and tool-call detail views
+
+### Backend
 
 - `GET /api/web-chat/sessions`
 - `POST /api/web-chat/sessions`
 - `GET /api/web-chat/sessions/{session_id}`
 - `POST /api/web-chat/runs`
-- `GET /api/web-chat/runs/{run_id}/events` via SSE
+- `GET /api/web-chat/runs/{run_id}/events`
 - `POST /api/web-chat/runs/{run_id}/stop`
 - `POST /api/web-chat/attachments`
 - `GET /api/web-chat/attachments/{attachment_id}`
 - `GET /api/web-chat/attachments/{attachment_id}/content`
-- `GET /api/web-chat/commands`
-- `POST /api/web-chat/commands/execute`
+Attachments uploaded from the UI are stored in the selected project under `.hermes/attachments/`, ignored by git in this prototype. Images render inline, other files use the authenticated content endpoint when supported by the browser, and deleted files remain visible in history as unavailable placeholders.
 
-Slash commands are backed by a small backend allowlist. Implemented commands are `/help`, `/status`, and `/changes`; `/clear` is advertised as confirmation-required but is not executed until a confirmation UX exists. Slash commands do not run arbitrary shell commands, and mutating or dangerous commands must remain blocked unless they have explicit backend validation and confirmation.
+The backend is built around explicit run management, SSE event streaming, and queue-backed prompt/response handling so interactive runs can be stopped, continued, and coordinated predictably.
 
-Chat attachments uploaded through the web UI are stored in the selected project under `.hermes/attachments/`, which is ignored by git in this prototype. Existing filenames are preserved when possible and automatically suffixed instead of overwritten. Image attachments render as inline thumbnails with a larger preview; other files open inline through the authenticated content endpoint when the browser supports their MIME type. Persisted attachment URLs include workspace context on the client side so previews can still be fetched after backend/runtime state is reset. Deleted files remain visible in chat history as unavailable placeholders; deleting a chat does not remove attachment files. Current limits are 8 files per upload request and 25 MB per file.
+Hermesum also emphasizes workspace-aware `git changes` visibility. The prototype is designed to make code and file modifications easier to inspect from the chat experience instead of hiding them behind the agent runtime.
 
-The run executor is intentionally injectable. The current default emits a placeholder assistant response; wiring to the real `AIAgent` should happen only after explicit approval to integrate these changes into the real Hermes repo or in a disposable worktree.
+## Safety Model
 
-## Implemented Nuxt prototype
+Hermesum treats this repository as the source of truth for prototype work.
 
-- Nuxt 4 static SPA in `web/`.
-- Nuxt UI dashboard shell/sidebar.
-- New chat page.
-- Chat detail page using `UChatMessages`, `UChatPrompt`, `UChatPromptSubmit`, `UChatReasoning`, `UChatTool`, and `Comark`.
-- EventSource/SSE composable for run streaming and stop handling.
-- Authenticated `$fetch` helper using injected `window.__HERMES_SESSION_TOKEN__`.
-- Slash-command autocomplete in the chat composer when the message starts with `/`.
+- Do not edit `$HOME/.hermes/hermes-agent` directly.
+- Runtime integration happens through the disposable `.runtime/hermes-agent` copy created by [`run-local.sh`](run-local.sh).
+- The upstream Hermes checkout is copied from, not mutated as part of normal development.
 
-## Development workflow
+This keeps the prototype portable and makes later upstreaming into the real Hermes repository much safer.
 
-Use fast dev mode for normal work, and static mode only when you need to verify the Hermes-served production-style bundle.
+## Quick Start
 
-### 1. Fast dev mode for frontend + Python development
+### Full dev mode
 
-Use this for day-to-day iteration:
+For normal frontend + backend work:
 
 ```bash
 ./run-local.sh --dev
 ```
 
-Then open `http://127.0.0.1:3019/`. In dev mode, opening the Hermes backend URL (`http://127.0.0.1:9119/`) redirects browser UI requests to the Nuxt dev server so you do not accidentally view stale static output.
+Then open `http://127.0.0.1:3019/`.
 
-What this does:
+This mode:
 
-- Starts the Hermes backend/dashboard runtime on `http://127.0.0.1:9119`.
-- Starts Nuxt dev server on `http://127.0.0.1:3019`.
-- Proxies Nuxt `/api/...` requests to the Hermes backend.
-- Shares an ephemeral dev session token between Nuxt and Hermes so API and SSE calls are authenticated.
-- Picks up `web/app/**` changes through Nuxt/Vite HMR without rebuilding the static app.
-- Restarts the Hermes backend when watched Python files change.
+- starts the Hermes backend/dashboard runtime on `http://127.0.0.1:9119`
+- starts the frontend dev server on `http://127.0.0.1:3019`
+- proxies `/api/...` requests to Hermes
+- shares an ephemeral dev session token for authenticated API and SSE calls
+- reloads frontend changes through Vite HMR
+- restarts the backend when watched Python files change
 
-Useful environment overrides:
+Useful override:
 
 ```bash
 PORT=9120 WEB_DEV_PORT=3020 ./run-local.sh --dev
 ```
 
-If a previous dev run left listeners behind on the configured ports, the runner waits briefly for them to exit and then force-stops only the stale port listeners. Adjust `PORT_STOP_TIMEOUT` if a local machine needs a longer shutdown grace period.
+### Frontend-only mode
 
-Important behavior:
-
-- Frontend changes should not trigger `pnpm build`.
-- Python changes restart the backend process, so in-flight chats/SSE streams can be interrupted.
-- The upstream Hermes checkout is only copied from; runtime patches are applied under `.runtime/hermes-agent`.
-
-### 2. Nuxt-only watch mode for isolated frontend work
-
-Use this when editing files under `web/` and you only need Nuxt itself:
+For isolated UI work:
 
 ```bash
 cd web
@@ -114,82 +106,58 @@ pnpm install
 pnpm dev
 ```
 
-Nuxt starts on `http://127.0.0.1:3019/`.
+### Hermes-served static preview
 
-- Changes in `web/app/**` are picked up automatically via Nuxt/Vite HMR.
-- You do not need to rerun the command after each change.
-- API requests use same-origin `/api/...`; for working Hermes APIs, prefer `./run-local.sh --dev`.
-
-### 3. Hermes-integrated static preview
-
-Use this when you want to launch the disposable Hermes runtime and serve the built Nuxt app through Hermes:
+For production-style preview through the disposable Hermes runtime:
 
 ```bash
 ./run-local.sh
 ```
 
-Important behavior:
+## Repo Structure
 
-- `run-local.sh` does not run Nuxt in watch mode.
-- It installs dependencies if needed and serves the built output from `web/.output/public`.
-- If you change frontend files while `run-local.sh` is already running, those changes will not appear until you rebuild and restart.
-
-### 4. Backend watch mode for static Python changes
-
-Use this when you are editing Python files and want Hermes to restart automatically:
-
-```bash
-./run-local.sh --watch
+```text
+backend/
+  hermes_cli/web_chat.py                    # thin FastAPI entrypoint
+  hermes_cli/web_chat_modules/              # modular backend domains
+  tests/hermes_cli/test_web_chat*.py        # split pytest coverage by domain
+web/                                        # Nuxt UI prototype
+run-local.sh                                # local runtime orchestration
+.runtime/                                   # disposable generated runtime state
 ```
 
-Important behavior:
+Key frontend areas include chat rendering, queued-message flows, attachments, tool-call details, git changes, and workspace/session UX. Key backend areas include routes, Pydantic models, run lifecycle, SSE streaming, queue-backed prompts, attachments, workspaces, and git-change persistence.
 
-- This watches Python files in `backend/` and in the upstream Hermes checkout from `HERMES_AGENT_SOURCE` or `$HOME/.hermes/hermes-agent`.
-- When a watched `.py` file changes, the Hermes dashboard process is restarted automatically.
-- This is an autorestart loop, not hot module replacement. Existing in-memory session state is lost on each restart.
-- Frontend files are still static in this mode. For live frontend refresh, keep using `pnpm dev` in `web/`.
+## Development Notes
 
-If you need to refresh the static build manually:
+- Frontend development should normally use `./run-local.sh --dev`, not repeated static builds.
+- Python restarts in watch/dev mode can interrupt in-flight SSE streams.
+- Shared request/response shapes should stay aligned between backend Pydantic models and frontend TypeScript types.
+- When backend payloads change, update backend models, API behavior, frontend types, frontend composables, and tests together.
 
-```bash
-cd web
-pnpm build
-```
+## Verification
 
-Then stop and start `./run-local.sh` again.
-
-### Recommended day-to-day loop
-
-For normal UI and Python development:
-
-1. Run `./run-local.sh --dev`.
-2. Open `http://127.0.0.1:3019/`.
-3. Keep that process running while editing.
-4. Use `./run-local.sh` only when you specifically need to verify the Hermes-served static integration.
-
-## Verification run
-
-Backend verified by applying the prototype into a temporary local clone of `$HOME/.hermes/hermes-agent`, using the real Hermes venv, and deleting the temporary clone afterwards:
-
-```bash
-6 passed in 1.12s
-```
-
-Frontend verification from `web/`:
+Frontend verification from [`web/`](web):
 
 ```bash
 pnpm typecheck
-# exit 0, with existing vue-router/volar package export warning
-
 pnpm build
-# Build complete
 ```
 
-Real Hermes repo cleanliness check after verification:
+Backend syntax verification:
 
 ```bash
-git -C "$HOME/.hermes/hermes-agent" status --short
-# M web/package-lock.json
+python3 -m py_compile backend/hermes_cli/web_chat.py backend/hermes_cli/web_chat_modules/*.py backend/tests/hermes_cli/test_web_chat*.py backend/tests/hermes_cli/conftest.py backend/tests/hermes_cli/web_chat_test_helpers.py
 ```
 
-Only the pre-existing `web/package-lock.json` change remains in the real Hermes repo.
+Latest recorded verification status for this prototype:
+
+```bash
+pytest: 6 passed in 1.12s
+pnpm typecheck: exit 0
+pnpm build: complete
+```
+
+## Positioning
+
+Hermesum is not trying to replace Hermes Agent internals. It is a prototype for a better operator experience on top of them: more understandable, more approachable, and much closer to something people would actually want to use every day.
