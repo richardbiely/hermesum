@@ -6,6 +6,8 @@ import type { WebChatMessage } from '~/types/web-chat'
 import type { QueuedMessage } from '~/utils/queuedMessages'
 import { messageText } from '~/utils/chatMessages'
 import { writeClipboardText } from '~/utils/clipboard'
+import { shouldHideChatUntilInitialScroll, scrollElementTreeToBottom } from '~/utils/chatInitialScroll'
+import { loadingChatSkeletonCount } from '~/utils/chatLoadingState'
 
 const route = useRoute()
 const api = useHermesApi()
@@ -14,6 +16,10 @@ const activeChatRuns = useActiveChatRuns()
 const context = useChatComposerContext()
 const toast = useToast()
 const input = ref('')
+const chatContainer = ref<HTMLElement | null>(null)
+const initialScrollSettledSessionId = ref<string | null>(null)
+const lastRenderedMessageCount = ref(0)
+const loadingSkeletonCount = computed(() => loadingChatSkeletonCount(lastRenderedMessageCount.value))
 const slashCommands = useSlashCommands({ input })
 const copiedMessageId = ref<string | null>(null)
 const workspaceInvalidSignal = ref(0)
@@ -39,6 +45,13 @@ const {
 
 const isLoadingSession = computed(() => sessionStatus.value === 'idle' || sessionStatus.value === 'pending')
 const hasSession = computed(() => Boolean(data.value?.session))
+const shouldHideChatContent = computed(() => shouldHideChatUntilInitialScroll({
+  currentSessionId: sessionId.value,
+  loadedSessionId: data.value?.session.id,
+  settledSessionId: initialScrollSettledSessionId.value,
+  isLoading: isLoadingSession.value,
+  hasSession: hasSession.value
+}))
 const {
   messages,
   submitStatus,
@@ -111,7 +124,31 @@ watchEffect(() => {
   }
 
   messages.value = data.value.messages ? [...data.value.messages] : []
+  lastRenderedMessageCount.value = messages.value.length
 })
+
+watch(sessionId, () => {
+  initialScrollSettledSessionId.value = null
+})
+
+watch(
+  () => [data.value?.session.id, messages.value.length] as const,
+  async ([loadedSessionId]) => {
+    if (loadedSessionId !== sessionId.value) return
+    if (initialScrollSettledSessionId.value === loadedSessionId) return
+
+    if (typeof requestAnimationFrame !== 'function') {
+      initialScrollSettledSessionId.value = loadedSessionId
+      return
+    }
+
+    await nextTick()
+    await new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
+    scrollElementTreeToBottom(chatContainer.value)
+    initialScrollSettledSessionId.value = loadedSessionId
+  },
+  { immediate: true, flush: 'post' }
+)
 
 watch(
   () => data.value?.session,
@@ -382,10 +419,21 @@ onBeforeUnmount(() => {
 
     <template #body>
       <UContainer class="mx-auto w-full max-w-[740px] py-6">
-        <div v-if="isLoadingSession" class="flex min-h-[40vh] items-center justify-center text-muted">
-          <div class="flex items-center gap-2 text-sm">
-            <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" />
-            <span>Loading chat…</span>
+        <div ref="chatContainer">
+          <div v-if="isLoadingSession" class="min-h-[calc(100dvh-14rem)] space-y-6 pt-2" aria-label="Loading chat">
+          <div
+            v-for="index in loadingSkeletonCount"
+            :key="index"
+            class="flex animate-pulse"
+            :class="index % 2 === 0 ? 'justify-end' : 'justify-start'"
+          >
+            <div
+              class="rounded-2xl bg-muted"
+              :class="[
+                index % 2 === 0 ? 'h-10 w-3/5' : 'h-20 w-4/5',
+                index === loadingSkeletonCount ? 'opacity-45' : 'opacity-70'
+              ]"
+            />
           </div>
         </div>
 
@@ -407,6 +455,8 @@ onBeforeUnmount(() => {
             :shouldAutoScroll="true"
             :shouldScrollToBottom="true"
             :autoScroll="true"
+            :class="shouldHideChatContent ? 'invisible' : undefined"
+            :aria-hidden="shouldHideChatContent"
           >
             <template #indicator>
               <div class="flex items-center gap-2 overflow-hidden text-muted">
@@ -432,6 +482,7 @@ onBeforeUnmount(() => {
             </template>
           </UChatMessages>
         </template>
+        </div>
       </UContainer>
     </template>
 
