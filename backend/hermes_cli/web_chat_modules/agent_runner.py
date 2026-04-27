@@ -158,6 +158,15 @@ def agent_executor(
             "input": args,
         })
 
+    def status_callback(kind: str, message: str) -> None:
+        if not message:
+            return
+        emit({
+            "type": "agent.status",
+            "kind": kind,
+            "message": message,
+        })
+
     def clarify_callback(question: str, choices: list[str] | None = None) -> str:
         choice_values = [str(choice) for choice in (choices or [])]
         prompt_choices = [
@@ -253,6 +262,7 @@ def agent_executor(
             reasoning_callback=reasoning_delta,
             clarify_callback=clarify_callback,
             tool_progress_callback=tool_progress,
+            status_callback=status_callback,
         )
         context.interrupt_agent = getattr(agent, "interrupt", None)
         context.steer_agent = getattr(agent, "steer", None)

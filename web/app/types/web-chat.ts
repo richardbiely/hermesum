@@ -50,8 +50,14 @@ export type SteerRunResponse = {
   messageId?: string | null
 }
 
+export type AgentStatusEvent = {
+  kind: 'lifecycle' | 'warn' | string
+  message: string
+  createdAt?: string | null
+}
+
 export type WebChatPart = {
-  type: 'text' | 'reasoning' | 'tool' | 'media' | 'interactive_prompt' | 'changes' | 'steer'
+  type: 'text' | 'reasoning' | 'tool' | 'media' | 'interactive_prompt' | 'changes' | 'steer' | 'status'
   text?: string | null
   name?: string | null
   status?: string | null

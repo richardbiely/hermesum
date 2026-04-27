@@ -1,4 +1,4 @@
-import type { InteractivePrompt } from '~/types/web-chat'
+import type { AgentStatusEvent, InteractivePrompt } from '~/types/web-chat'
 import { notificationSoundVariant, playNotificationSound } from '../utils/notificationSound'
 import { createRunEventReplay } from '../utils/runEventReplay'
 
@@ -12,6 +12,7 @@ type ActiveRunHandlers = {
   onCompleted?: (content?: string) => void
   onToolStarted?: (payload: ToolRunPayload) => void
   onToolCompleted?: (payload: ToolRunPayload) => void
+  onStatus?: (payload: AgentStatusEvent) => void
   onPromptRequested?: (prompt: InteractivePrompt) => void
   onPromptUpdated?: (prompt: InteractivePrompt) => void
   onError?: (error: Error) => void
@@ -91,6 +92,15 @@ function runNotificationVariant(sessionId: string) {
 function promptFromPayload(payload: RunEventPayload) {
   const prompt = payload.prompt
   return prompt && typeof prompt === 'object' ? prompt as InteractivePrompt : null
+}
+
+function statusFromPayload(payload: RunEventPayload): AgentStatusEvent | null {
+  if (typeof payload.message !== 'string' || !payload.message) return null
+  return {
+    kind: typeof payload.kind === 'string' ? payload.kind : 'lifecycle',
+    message: payload.message,
+    createdAt: typeof payload.createdAt === 'string' ? payload.createdAt : null
+  }
 }
 
 export function useActiveChatRuns() {
@@ -187,6 +197,12 @@ export function useActiveChatRuns() {
         preview: typeof payload.preview === 'string' ? payload.preview : undefined,
         input: payload.input
       })
+    })
+
+    source.addEventListener('agent.status', (event) => {
+      const payload = statusFromPayload(parsePayload(event))
+      if (!payload) return
+      recordAndNotify(run, 'onStatus', payload)
     })
 
     source.addEventListener('prompt.requested', (event) => {

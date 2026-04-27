@@ -50,6 +50,18 @@ const hasFailure = computed(() => summary.value.includes('failed'))
         </UChatReasoning>
 
         <ToolCallItem v-else-if="part.type === 'tool'" :part="part" />
+
+        <div
+          v-else-if="part.type === 'status'"
+          class="flex items-start gap-2 rounded-md px-2 py-1 text-xs"
+          :class="part.status === 'warn' ? 'bg-warning/10 text-warning' : 'bg-muted/30 text-muted'"
+        >
+          <UIcon
+            :name="part.status === 'warn' ? 'i-lucide-triangle-alert' : 'i-lucide-info'"
+            class="mt-0.5 size-3.5 shrink-0"
+          />
+          <span class="whitespace-pre-wrap text-toned">{{ partText(part) }}</span>
+        </div>
       </template>
     </div>
   </section>

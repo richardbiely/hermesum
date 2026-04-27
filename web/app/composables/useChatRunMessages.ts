@@ -1,5 +1,5 @@
 import type { ComputedRef, Ref } from 'vue'
-import type { InteractivePrompt, WebChatMessage, WebChatPart } from '~/types/web-chat'
+import type { AgentStatusEvent, InteractivePrompt, WebChatMessage, WebChatPart } from '~/types/web-chat'
 import { toolDisplayName } from '~/utils/toolCalls'
 import { createLocalMessage } from './useHermesRunStream'
 
@@ -115,6 +115,13 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
     assistant.parts.push(toolPart)
   }
 
+  function appendStatus(payload: AgentStatusEvent) {
+    hasAssistantResponseStarted.value = true
+    const assistant = assistantMessage()
+    removeThinkingPart(assistant)
+    assistant.parts.push({ type: 'status', text: payload.message, status: payload.kind })
+  }
+
   function markToolCompleted(payload: { name?: string }) {
     const assistant = [...messages.value].reverse().find(message => message.role === 'assistant')
     const toolPart = assistant?.parts.findLast(part => part.type === 'tool' && part.status === 'running' && (!payload.name || part.name === payload.name))
@@ -175,6 +182,9 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
       },
       onToolCompleted: (payload) => {
         if (targetSessionId === options.sessionId.value) markToolCompleted(payload)
+      },
+      onStatus: (payload) => {
+        if (targetSessionId === options.sessionId.value) appendStatus(payload)
       },
       onPromptRequested: (prompt) => {
         if (targetSessionId === options.sessionId.value) appendPrompt(prompt)

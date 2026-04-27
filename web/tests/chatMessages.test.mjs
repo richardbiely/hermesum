@@ -33,6 +33,25 @@ test('keeps non-process parts out of process groups', () => {
   assert.equal(groups[4].type, 'part')
 })
 
+test('groups status parts with run details', () => {
+  const groups = groupMessageParts([
+    { type: 'text', text: 'Before' },
+    { type: 'status', text: 'Switching provider', status: 'lifecycle' },
+    { type: 'tool', name: 'terminal' }
+  ])
+
+  assert.equal(groups.length, 2)
+  assert.equal(groups[1].type, 'process')
+  assert.equal(groups[1].parts.map(part => part.type).join(','), 'status,tool')
+})
+
+test('summarizes status and warning process parts', () => {
+  assert.equal(processGroupSummary([
+    { type: 'status', text: 'Switching provider', status: 'lifecycle' },
+    { type: 'status', text: 'Compression failed', status: 'warn' }
+  ]), '1 warning')
+})
+
 test('summarizes process groups by useful categories', () => {
   assert.equal(processGroupSummary([
     { type: 'reasoning', text: 'Thinking' },

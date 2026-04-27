@@ -58,6 +58,40 @@ def test_start_run_returns_ids_and_persists_messages(client, monkeypatch, tmp_pa
     assert detail.json()["session"]["workspace"] == str(repo)
 
 
+def test_start_run_streams_agent_status_without_persisting_status(client, monkeypatch, tmp_path):
+    import hermes_cli.web_chat as web_chat
+
+    repo = git_repo(tmp_path)
+
+    def fake_executor(context, emit):
+        emit({
+            "type": "agent.status",
+            "kind": "warn",
+            "message": "test warning",
+            "createdAt": "2026-04-27T12:00:00+00:00",
+        })
+        return "Done"
+
+    monkeypatch.setattr(web_chat, "run_manager", web_chat.RunManager(fake_executor))
+
+    response = client.post("/api/web-chat/runs", json={"input": "Say done", "workspace": str(repo)})
+    assert response.status_code == 202
+    run = response.json()
+
+    with client.stream("GET", f"/api/web-chat/runs/{run['runId']}/events") as stream:
+        body = stream.read().decode()
+
+    assert "event: agent.status" in body
+    assert "test warning" in body
+    assert "event: message.completed" in body
+
+    detail = client.get(f"/api/web-chat/sessions/{run['sessionId']}")
+    messages = detail.json()["messages"]
+    assert [message["role"] for message in messages] == ["user", "assistant"]
+    assert messages[1]["parts"][0]["text"] == "Done"
+    assert "test warning" not in json.dumps(messages)
+
+
 def test_stop_run_interrupts_executor_and_persists_interrupted_message(client, monkeypatch, tmp_path):
     import hermes_cli.web_chat as web_chat
 
