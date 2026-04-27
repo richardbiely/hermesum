@@ -94,7 +94,7 @@ const emit = defineEmits<{
               variant="soft"
               label="Save"
               :loading="savingEditedMessageId === message.id"
-              :disabled="!editingText.trim()"
+              :disabled="!editingText.trim() || isRunning"
               @click="emit('saveEdit', message)"
             />
           </div>
@@ -122,22 +122,26 @@ const emit = defineEmits<{
     <span class="whitespace-nowrap" :title="messageTimestampTitle(message.createdAt)">
       {{ formatMessageTimestamp(message.createdAt) }}
     </span>
-    <button
-      type="button"
-      class="inline-flex size-4 flex-none items-center justify-center text-muted hover:text-highlighted focus-visible:outline-2 focus-visible:outline-primary/50"
-      aria-label="Edit message"
-      :disabled="isRunning || savingEditedMessageId === message.id || message.localStatus === 'failed'"
-      @click="emit('edit', message)"
-    >
-      <UIcon name="i-lucide-pencil" class="size-3" />
-    </button>
-    <button
-      type="button"
-      class="inline-flex size-4 flex-none items-center justify-center text-muted hover:text-highlighted focus-visible:outline-2 focus-visible:outline-primary/50"
-      :aria-label="copiedMessageId === message.id ? 'Copied message' : 'Copy message'"
-      @click="emit('copy', message)"
-    >
-      <UIcon :name="copiedMessageId === message.id ? 'i-lucide-check' : 'i-lucide-copy'" class="size-3" />
-    </button>
+    <UTooltip text="Stop chat and edit prompt">
+      <button
+        type="button"
+        class="inline-flex size-4 flex-none items-center justify-center text-muted hover:text-highlighted focus-visible:outline-2 focus-visible:outline-primary/50"
+        aria-label="Edit message"
+        :disabled="savingEditedMessageId === message.id || message.localStatus === 'failed'"
+        @click="emit('edit', message)"
+      >
+        <UIcon name="i-lucide-pencil" class="size-3" />
+      </button>
+    </UTooltip>
+    <UTooltip text="Copy">
+      <button
+        type="button"
+        class="inline-flex size-4 flex-none items-center justify-center text-muted hover:text-highlighted focus-visible:outline-2 focus-visible:outline-primary/50"
+        :aria-label="copiedMessageId === message.id ? 'Copied message' : 'Copy message'"
+        @click="emit('copy', message)"
+      >
+        <UIcon :name="copiedMessageId === message.id ? 'i-lucide-check' : 'i-lucide-copy'" class="size-3" />
+      </button>
+    </UTooltip>
   </div>
 </template>

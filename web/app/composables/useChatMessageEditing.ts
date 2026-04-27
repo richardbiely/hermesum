@@ -85,7 +85,16 @@ export function useChatMessageEditing(options: UseChatMessageEditingOptions) {
   }
 
   function startEditingMessage(message: WebChatMessage) {
-    if (options.activeChatRuns.isRunning(options.sessionId.value) || options.submitStatus.value === 'submitted') return
+    const sessionId = options.sessionId.value
+    const runIsActive = options.activeChatRuns.isRunning(sessionId)
+    if (!runIsActive && options.submitStatus.value === 'submitted') return
+
+    if (runIsActive) {
+      void options.activeChatRuns.stop(sessionId).catch((err: unknown) => {
+        options.showError(err, 'Failed to interrupt chat')
+      })
+    }
+
     resetEditingTextareaLayout()
     editingMessageId.value = message.id
     editingText.value = messageText(message)

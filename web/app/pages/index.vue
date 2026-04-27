@@ -43,7 +43,7 @@ const {
   onPromptArrowDown,
   onPromptArrowUp,
   onPromptEscape,
-  onPromptEnter
+  onPromptEnter: onPromptAutocompleteEnter
 } = useChatSlashCommandAutocomplete({
   input,
   slashCommands
@@ -78,6 +78,17 @@ async function onSubmit() {
   } finally {
     loading.value = false
   }
+}
+
+function onPromptEnter(event: KeyboardEvent) {
+  if (event.shiftKey || event.isComposing) return
+
+  onPromptAutocompleteEnter(event)
+  if (event.defaultPrevented) return
+
+  event.preventDefault()
+  event.stopPropagation()
+  void onSubmit()
 }
 </script>
 
