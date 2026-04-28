@@ -58,6 +58,7 @@ let updateStatusCheckPending = false
 let lastUpdateStatusCheckAt = 0
 const READ_MESSAGE_COUNTS_KEY = 'hermes-chat-read-message-counts'
 const UPDATE_STATUS_CHECK_INTERVAL_MS = 20 * 60 * 1000
+const SESSION_PREFETCH_MESSAGE_LIMIT = 60
 let timer: ReturnType<typeof setInterval> | undefined
 let unsubscribeRunFinished: (() => void) | undefined
 
@@ -543,7 +544,7 @@ async function deleteSession(session: WebChatSession) {
 }
 
 function prefetchSession(session: WebChatSession) {
-  sessionCache.prefetch(session.id)
+  sessionCache.prefetch(session.id, { messageLimit: SESSION_PREFETCH_MESSAGE_LIMIT })
 }
 
 function openSession(session: WebChatSession) {

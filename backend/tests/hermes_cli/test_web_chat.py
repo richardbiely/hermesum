@@ -187,6 +187,39 @@ def test_returns_session_with_messages(client):
     assert data["messages"][1]["parts"][1]["text"] == "Yes."
 
 
+def test_gets_session_detail_message_window(client):
+    from hermes_state import SessionDB
+
+    db = SessionDB()
+    db.create_session("session-window", source="web-chat")
+    message_ids = []
+    for index in range(5):
+        message_ids.append(db.append_message("session-window", "user", f"Message {index}"))
+
+    response = client.get("/api/web-chat/sessions/session-window?messageLimit=2")
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["messagesTotal"] == 5
+    assert data["messagesHasMoreBefore"] is True
+    assert [message["parts"][0]["text"] for message in data["messages"]] == ["Message 3", "Message 4"]
+
+    older = client.get(f"/api/web-chat/sessions/session-window?messageLimit=2&messageBefore={message_ids[3]}")
+
+    assert older.status_code == 200
+    older_data = older.json()
+    assert older_data["messagesHasMoreBefore"] is True
+    assert [message["parts"][0]["text"] for message in older_data["messages"]] == ["Message 1", "Message 2"]
+
+    oldest = client.get(f"/api/web-chat/sessions/session-window?messageLimit=2&messageBefore={message_ids[1]}")
+
+    assert oldest.status_code == 200
+    oldest_data = oldest.json()
+    assert oldest_data["messagesHasMoreBefore"] is False
+    assert [message["parts"][0]["text"] for message in oldest_data["messages"]] == ["Message 0"]
+
+
+
 def test_attaches_tool_output_to_tool_call_part(client):
     from hermes_state import SessionDB
 

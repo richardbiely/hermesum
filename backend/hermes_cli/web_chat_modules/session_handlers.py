@@ -159,6 +159,8 @@ def get_session_response(
     *,
     session_id: str,
     include_workspace_changes: bool,
+    message_limit: int | None = None,
+    message_before: str | None = None,
     get_session_or_404: Callable[[SessionDB, str], dict[str, Any]],
     session_git_changes_by_message: Callable[[SessionDB, str], dict[str, WebChatWorkspaceChanges]],
     serialize_session: Callable[[dict[str, Any]], WebChatSession],
@@ -167,11 +169,32 @@ def get_session_response(
     isolated_worktree_for_session: Callable[[SessionDB, str], Any | None] | None = None,
 ) -> SessionDetailResponse:
     session = get_session_or_404(db, session_id)
-    messages = db.get_messages(session_id)
+    all_messages = db.get_messages(session_id)
+    messages_total = len(all_messages)
+    messages = window_session_messages(all_messages, limit=message_limit, before_message_id=message_before)
     changes_by_message = session_git_changes_by_message(db, session_id) if include_workspace_changes else None
     return SessionDetailResponse(
         session=serialize_session(session),
         messages=serialize_messages(messages, changes_by_message=changes_by_message),
         activeRun=active_run_for_session(session_id) if active_run_for_session else None,
         isolatedWorkspace=isolated_worktree_for_session(db, session_id) if isolated_worktree_for_session else None,
+        messagesHasMoreBefore=messages_total > 0 and bool(messages) and all_messages[0].get("id") != messages[0].get("id"),
+        messagesTotal=messages_total,
     )
+
+
+def window_session_messages(
+    messages: list[dict[str, Any]],
+    *,
+    limit: int | None,
+    before_message_id: str | None,
+) -> list[dict[str, Any]]:
+    if limit is None:
+        return messages
+
+    end = len(messages)
+    if before_message_id:
+        end = next((index for index, message in enumerate(messages) if str(message.get("id")) == before_message_id), end)
+
+    start = max(0, end - limit)
+    return messages[start:end]

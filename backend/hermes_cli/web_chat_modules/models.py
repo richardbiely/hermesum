@@ -303,6 +303,8 @@ class SessionDetailResponse(BaseModel):
     messages: list[WebChatMessage]
     activeRun: ActiveRunSummary | None = None
     isolatedWorkspace: WebChatIsolatedWorkspace | None = None
+    messagesHasMoreBefore: bool = False
+    messagesTotal: int | None = None
 
 
 class CreateSessionRequest(BaseModel):

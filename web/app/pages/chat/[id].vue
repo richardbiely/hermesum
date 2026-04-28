@@ -2,7 +2,7 @@
 import { playNotificationSound, prepareNotificationSound } from '../../utils/notificationSound'
 import { recoverActiveRun } from '../../utils/activeRunRecovery'
 import { connectRouteRun } from '../../utils/routeRunConnection'
-import type { WebChatAttachment, WebChatMessage } from '~/types/web-chat'
+import type { SessionDetailResponse, WebChatAttachment, WebChatMessage } from '~/types/web-chat'
 import type { QueuedMessage } from '~/utils/queuedMessages'
 import { latestChangePartKey, messageText } from '~/utils/chatMessages'
 import { filesFromClipboard, writeClipboardText } from '~/utils/clipboard'
@@ -10,6 +10,9 @@ import { mergeOptimisticUserMessages } from '~/utils/optimisticChatMessages'
 import { markLocalMessageFailed, markLocalMessageSending, removeLocalMessage } from '~/utils/failedChatMessages'
 import { shouldHideChatUntilInitialScroll, scrollElementTreeToBottom, scrollElementTreeToBottomAfterRender, nearestScrollableAncestor, isElementVisibleInRoot } from '~/utils/chatInitialScroll'
 import { loadingChatSkeletonCount } from '~/utils/chatLoadingState'
+
+const INITIAL_SESSION_MESSAGE_LIMIT = 60
+const OLDER_SESSION_MESSAGE_LIMIT = 80
 
 const route = useRoute()
 const api = useHermesApi()
@@ -21,6 +24,7 @@ const toast = useToast()
 const input = ref('')
 const chatContainer = ref<HTMLElement | null>(null)
 const bottomReadSentinel = ref<HTMLElement | null>(null)
+const olderMessagesSentinel = ref<HTMLElement | null>(null)
 const initialScrollSettledSessionId = ref<string | null>(null)
 const lastRenderedMessageCount = ref(0)
 const loadingSkeletonCount = computed(() => loadingChatSkeletonCount(lastRenderedMessageCount.value))
@@ -28,11 +32,16 @@ const slashCommands = useSlashCommands({ input })
 const copiedMessageId = ref<string | null>(null)
 const workspaceInvalidSignal = ref(0)
 const suppressNextInterruptedMessage = ref(false)
+const loadingOlderMessages = ref(false)
+const olderMessagesError = ref<string | null>(null)
+let preserveScrollAfterPrepend: { root: Element, previousScrollHeight: number, previousScrollTop: number } | null = null
 let copiedMessageTimer: ReturnType<typeof setTimeout> | undefined
 const refreshSessions = inject<() => Promise<void> | void>('refreshSessions')
 const markSessionRead = inject<(sessionId: string, messageCount: number) => void>('markSessionRead')
 let optimisticUserMessageIds = new Set<string>()
 let bottomReadObserver: IntersectionObserver | undefined
+let olderMessagesObserver: IntersectionObserver | undefined
+let olderMessagesScrollRoot: Element | null = null
 let readScrollRoot: Element | null = null
 let readScrollAnimationFrame: number | undefined
 let previousScrollRestoration: ScrollRestoration | undefined
@@ -51,7 +60,7 @@ const {
 } = useLazyAsyncData(
   () => `web-chat-session-${sessionId.value}`,
   async () => {
-    const response = await sessionCache.fetch(sessionId.value)
+    const response = await sessionCache.fetch(sessionId.value, { messageLimit: INITIAL_SESSION_MESSAGE_LIMIT })
     sessionCache.set(response)
     return response
   },
@@ -63,6 +72,12 @@ const {
 const displayedData = computed(() => {
   if (data.value?.session.id === sessionId.value) return data.value
   return sessionCache.get(sessionId.value)
+})
+const hasOlderMessages = computed(() => Boolean(displayedData.value?.messagesHasMoreBefore))
+const olderMessagesLabel = computed(() => {
+  const total = displayedData.value?.messagesTotal
+  if (!total) return 'Load earlier messages'
+  return `Load earlier messages (${messages.value.length}/${total})`
 })
 const isLoadingSession = computed(() => (sessionStatus.value === 'idle' || sessionStatus.value === 'pending') && !displayedData.value)
 const hasSession = computed(() => Boolean(displayedData.value?.session))
@@ -194,6 +209,7 @@ watch(
 
     await scrollChatToBottomAfterRender()
     attachReadScrollListener()
+    attachOlderMessagesObserver()
     initialScrollSettledSessionId.value = loadedSessionId
   },
   { immediate: true, flush: 'post' }
@@ -333,6 +349,79 @@ function latestMessageElement() {
 
 function readVisibilityRoot() {
   return nearestScrollableAncestor(chatContainer.value)
+}
+
+function mergeOlderSessionMessages(current: SessionDetailResponse, older: SessionDetailResponse): SessionDetailResponse {
+  const seen = new Set(current.messages.map(message => message.id))
+  const olderMessages = older.messages.filter(message => !seen.has(message.id))
+  return {
+    ...current,
+    session: older.session,
+    messages: [...olderMessages, ...current.messages],
+    messagesHasMoreBefore: older.messagesHasMoreBefore,
+    messagesTotal: older.messagesTotal ?? current.messagesTotal
+  }
+}
+
+function preserveCurrentScrollPosition() {
+  const root = readVisibilityRoot()
+  if (!root) return
+  preserveScrollAfterPrepend = {
+    root,
+    previousScrollHeight: root.scrollHeight,
+    previousScrollTop: root.scrollTop
+  }
+}
+
+async function restoreScrollPositionAfterPrepend() {
+  const preserved = preserveScrollAfterPrepend
+  preserveScrollAfterPrepend = null
+  if (!preserved) return
+  await nextTick()
+  await waitForAnimationFrame()
+  preserved.root.scrollTop = preserved.previousScrollTop + (preserved.root.scrollHeight - preserved.previousScrollHeight)
+}
+
+async function loadOlderMessages() {
+  if (loadingOlderMessages.value || !hasOlderMessages.value) return
+  if (initialScrollSettledSessionId.value !== sessionId.value) return
+  const current = displayedData.value
+  const beforeMessageId = current?.messages[0]?.id
+  if (!current || current.session.id !== sessionId.value || !beforeMessageId) return
+
+  loadingOlderMessages.value = true
+  olderMessagesError.value = null
+  preserveCurrentScrollPosition()
+
+  try {
+    const older = await sessionCache.fetch(sessionId.value, {
+      messageLimit: OLDER_SESSION_MESSAGE_LIMIT,
+      messageBefore: beforeMessageId
+    })
+    const merged = mergeOlderSessionMessages(current, older)
+    data.value = merged
+    sessionCache.set(merged)
+    await restoreScrollPositionAfterPrepend()
+  } catch (err) {
+    preserveScrollAfterPrepend = null
+    olderMessagesError.value = getHermesErrorMessage(err, 'Could not load earlier messages')
+  } finally {
+    loadingOlderMessages.value = false
+  }
+}
+
+function attachOlderMessagesObserver() {
+  if (typeof IntersectionObserver !== 'function') return
+  const nextRoot = readVisibilityRoot()
+  if (olderMessagesObserver && olderMessagesScrollRoot === nextRoot) return
+
+  olderMessagesObserver?.disconnect()
+  olderMessagesScrollRoot = nextRoot
+  olderMessagesObserver = new IntersectionObserver((entries) => {
+    if (entries.some(entry => entry.isIntersecting)) void loadOlderMessages()
+  }, { root: nextRoot, rootMargin: '240px 0px 0px 0px', threshold: 0 })
+
+  if (olderMessagesSentinel.value) olderMessagesObserver.observe(olderMessagesSentinel.value)
 }
 
 function isBottomReadSentinelVisible() {
@@ -739,6 +828,8 @@ onBeforeUnmount(() => {
   if (copiedMessageTimer) clearTimeout(copiedMessageTimer)
   if (previousScrollRestoration) history.scrollRestoration = previousScrollRestoration
   bottomReadObserver?.disconnect()
+  olderMessagesObserver?.disconnect()
+  olderMessagesScrollRoot = null
   readScrollRoot?.removeEventListener('scroll', scheduleReadVisibilityCheck)
   readScrollRoot = null
   if (readScrollAnimationFrame !== undefined) cancelAnimationFrame(readScrollAnimationFrame)
@@ -785,6 +876,25 @@ onBeforeUnmount(() => {
         </div>
 
         <template v-else>
+          <div
+            v-if="hasOlderMessages || olderMessagesError"
+            ref="olderMessagesSentinel"
+            class="mb-4 flex flex-col items-center gap-2"
+          >
+            <UButton
+              v-if="hasOlderMessages"
+              color="neutral"
+              variant="ghost"
+              size="sm"
+              :label="olderMessagesLabel"
+              :loading="loadingOlderMessages"
+              :disabled="loadingOlderMessages"
+              @click="loadOlderMessages"
+            />
+            <p v-if="olderMessagesError" class="text-xs text-error">
+              {{ olderMessagesError }}
+            </p>
+          </div>
           <UChatMessages
             :messages="messages"
             :status="chatMessagesStatus"

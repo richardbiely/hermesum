@@ -261,11 +261,18 @@ def register_web_chat_routes(router: APIRouter, services: WebChatRouteServices) 
         return services.duplicate_session(services.db(), session_id)
 
     @router.get("/sessions/{session_id}", response_model=SessionDetailResponse)
-    def get_session(session_id: str, includeWorkspaceChanges: bool = Query(default=False)) -> SessionDetailResponse:
+    def get_session(
+        session_id: str,
+        includeWorkspaceChanges: bool = Query(default=False),
+        messageLimit: int | None = Query(default=None, ge=1, le=200),
+        messageBefore: str | None = Query(default=None, min_length=1),
+    ) -> SessionDetailResponse:
         return session_handlers.get_session_response(
             services.db(),
             session_id=session_id,
             include_workspace_changes=includeWorkspaceChanges,
+            message_limit=messageLimit,
+            message_before=messageBefore,
             get_session_or_404=services.get_session_or_404,
             session_git_changes_by_message=services.session_git_changes_by_message,
             serialize_session=services.serialize_session,

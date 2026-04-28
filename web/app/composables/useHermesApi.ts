@@ -33,6 +33,19 @@ function hermesToken() {
   return window.__HERMES_SESSION_TOKEN__ || (typeof runtimeToken === 'string' ? runtimeToken : undefined)
 }
 
+type SessionDetailOptions = {
+  messageLimit?: number
+  messageBefore?: string
+}
+
+function sessionDetailQuery(options: SessionDetailOptions = {}) {
+  return {
+    includeWorkspaceChanges: true,
+    messageLimit: options.messageLimit,
+    messageBefore: options.messageBefore
+  }
+}
+
 export function useHermesApi() {
   function authHeaders(headers?: HeadersInit) {
     const next = new Headers(headers)
@@ -100,8 +113,8 @@ export function useHermesApi() {
       body: payload
     }),
     listSessions: () => request<SessionListResponse>('/api/web-chat/sessions'),
-    getSession: (id: string) => request<SessionDetailResponse>(`/api/web-chat/sessions/${id}`, {
-      query: { includeWorkspaceChanges: true }
+    getSession: (id: string, options?: SessionDetailOptions) => request<SessionDetailResponse>(`/api/web-chat/sessions/${id}`, {
+      query: sessionDetailQuery(options)
     }),
     renameSession: (id: string, title: string) => request<SessionDetailResponse>(`/api/web-chat/sessions/${id}`, {
       method: 'PATCH',
