@@ -43,6 +43,7 @@ from .models import (
     WebChatFilePreviewReference,
     WebChatMessage,
     WebChatModelCapability,
+    WebChatProviderUsageResponse,
     WebChatProfilesResponse,
     WebChatSession,
     WebChatUpdateStatusResponse,
@@ -69,6 +70,7 @@ class WebChatRouteServices:
     default_model_id: Callable[[], str | None]
     active_provider_id: Callable[[], str]
     model_capabilities: Callable[[], list[WebChatModelCapability]]
+    provider_usage: Callable[[str | None, str | None], WebChatProviderUsageResponse]
     list_web_chat_profiles: Callable[[], WebChatProfilesResponse]
     switch_web_chat_profile: Callable[[SwitchProfileRequest], SwitchProfileResponse]
     list_web_chat_workspaces: Callable[[], WebChatWorkspacesResponse]
@@ -123,6 +125,13 @@ def register_web_chat_routes(router: APIRouter, services: WebChatRouteServices) 
             defaultModel=services.default_model_id(),
             models=services.model_capabilities(),
         )
+
+    @router.get("/provider-usage", response_model=WebChatProviderUsageResponse, response_model_exclude_none=True)
+    def get_provider_usage(
+        provider: str | None = Query(default=None, max_length=100),
+        model: str | None = Query(default=None, max_length=200),
+    ) -> WebChatProviderUsageResponse:
+        return services.provider_usage(provider, model)
 
     @router.get("/update", response_model=WebChatUpdateStatusResponse)
     def get_update_status() -> WebChatUpdateStatusResponse:

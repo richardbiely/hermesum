@@ -52,6 +52,97 @@ def test_returns_chat_capabilities(client, monkeypatch):
     ]
 
 
+def test_returns_provider_usage(client, monkeypatch):
+    import hermes_cli.web_chat as web_chat
+    from hermes_cli.web_chat_modules.models import (
+        WebChatProviderUsageLimit,
+        WebChatProviderUsageResponse,
+        WebChatProviderUsageWindow,
+    )
+
+    monkeypatch.setattr(
+        web_chat,
+        "_provider_usage_impl",
+        lambda provider=None, model=None: WebChatProviderUsageResponse(
+            provider=provider or "openai-codex",
+            model=model,
+            source="codex",
+            available=True,
+            limits=[
+                WebChatProviderUsageLimit(
+                    id="codex",
+                    label="Codex",
+                    windows=[WebChatProviderUsageWindow(label="Daily", usedPercent=30, remainingPercent=70)],
+                )
+            ],
+            capturedAt="2026-01-01T00:00:00+00:00",
+        ),
+    )
+
+    response = client.get("/api/web-chat/provider-usage?provider=openai-codex&model=gpt-5.5")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "provider": "openai-codex",
+        "model": "gpt-5.5",
+        "source": "codex",
+        "available": True,
+        "limits": [
+            {
+                "id": "codex",
+                "label": "Codex",
+                "windows": [{"label": "Daily", "usedPercent": 30.0, "remainingPercent": 70.0}],
+            }
+        ],
+        "capturedAt": "2026-01-01T00:00:00+00:00",
+    }
+
+
+def test_codex_provider_usage_maps_rate_limit_payload(monkeypatch):
+    from hermes_cli.web_chat_modules import provider_usage
+
+    class Response:
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return {
+                "rate_limit": {
+                    "primary_window": {"used_percent": 20, "limit_window_seconds": 86400, "reset_at": 1767225600},
+                    "secondary_window": {"used_percent": 40, "limit_window_seconds": 604800, "reset_at": 1767571200},
+                },
+                "additional_rate_limits": [
+                    {
+                        "metered_feature": "codex_other",
+                        "limit_name": "Other models",
+                        "rate_limit": {
+                            "primary_window": {"used_percent": 10, "limit_window_seconds": 86400, "reset_at": 1767225600},
+                        },
+                    }
+                ],
+            }
+
+    captured = {}
+
+    def request_get(url, **kwargs):
+        captured["url"] = url
+        captured["headers"] = kwargs["headers"]
+        return Response()
+
+    result = provider_usage.codex_provider_usage(resolve_access_token=lambda: "token", request_get=request_get)
+
+    assert captured["url"] == provider_usage.CODEX_USAGE_URL
+    assert captured["headers"]["Authorization"] == "Bearer token"
+    assert result.available is True
+    assert result.limits[0].id == "codex"
+    assert result.limits[0].windows[0].label == "Daily"
+    assert result.limits[0].windows[0].remainingPercent == 80.0
+    assert result.limits[0].windows[1].label == "Weekly"
+    assert result.limits[0].windows[1].remainingPercent == 60.0
+    assert result.limits[1].id == "codex_other"
+    assert result.limits[1].label == "Other models"
+
+
 def test_returns_profiles_for_composer(client, monkeypatch, tmp_path):
     import hermes_cli.web_chat as web_chat
 

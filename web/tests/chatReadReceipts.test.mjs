@@ -33,6 +33,23 @@ test('prompt unread keeps a session unread regardless of message count', () => {
   ), true)
 })
 
+test('new sessions can be initialized unread after the first sidebar sync', () => {
+  const next = syncInitialReadMessageCounts(
+    [
+      { id: 'chat-1', messageCount: 5 },
+      { id: 'chat-2', messageCount: 2 }
+    ],
+    { 'chat-1': 5 },
+    session => session.id === 'chat-2' ? 0 : session.messageCount
+  )
+
+  assert.deepEqual(next, {
+    'chat-1': 5,
+    'chat-2': 0
+  })
+  assert.equal(isSessionUnread({ id: 'chat-2', messageCount: 2 }, next, true), true)
+})
+
 test('visible read receipts use the sidebar session count when it is newer than observed chat detail', () => {
   assert.equal(readMessageCountForVisibleSession({ messageCount: 12 }, 10), 12)
   assert.equal(readMessageCountForVisibleSession({ messageCount: 8 }, 10), 10)

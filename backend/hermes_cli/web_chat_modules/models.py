@@ -156,6 +156,30 @@ class WebChatCapabilitiesResponse(BaseModel):
     models: list[WebChatModelCapability]
 
 
+class WebChatProviderUsageWindow(BaseModel):
+    label: str
+    usedPercent: float
+    remainingPercent: float
+    windowMinutes: int | None = None
+    resetsAt: str | None = None
+
+
+class WebChatProviderUsageLimit(BaseModel):
+    id: str
+    label: str
+    windows: list[WebChatProviderUsageWindow] = Field(default_factory=list)
+
+
+class WebChatProviderUsageResponse(BaseModel):
+    provider: str
+    model: str | None = None
+    source: str
+    available: bool
+    unavailableReason: str | None = None
+    limits: list[WebChatProviderUsageLimit] = Field(default_factory=list)
+    capturedAt: str | None = None
+
+
 class WebChatUpdateStatusResponse(BaseModel):
     updateAvailable: bool
     runtimeOutOfSync: bool

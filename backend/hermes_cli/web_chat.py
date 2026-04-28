@@ -58,6 +58,7 @@ from .web_chat_modules.capabilities import (
     resolve_requested_model as _resolve_requested_model_impl,
     resolve_requested_reasoning_effort as _resolve_requested_reasoning_effort_impl,
 )
+from .web_chat_modules.provider_usage import provider_usage as _provider_usage_impl
 from .web_chat_modules.git_changes import (
     copy_session_git_changes as _copy_session_git_changes_impl,
     count_text_lines as _count_text_lines_impl,
@@ -120,6 +121,7 @@ from .web_chat_modules.models import (
     WebChatPart,
     WebChatProfile,
     WebChatProfilesResponse,
+    WebChatProviderUsageResponse,
     WebChatSession,
     WebChatUpdateStatusResponse,
     WebChatWorkspace,
@@ -789,6 +791,10 @@ def _model_capabilities() -> list[WebChatModelCapability]:
     return _model_capabilities_impl(available_ids=_available_model_ids)
 
 
+def _provider_usage(provider: str | None = None, model: str | None = None) -> WebChatProviderUsageResponse:
+    return _provider_usage_impl(provider, model)
+
+
 def _default_model_id() -> str | None:
     return _default_model_id_impl(available_ids=_available_model_ids)
 
@@ -877,6 +883,7 @@ register_web_chat_routes(
         default_model_id=lambda: _default_model_id(),
         active_provider_id=lambda: _active_provider_id(),
         model_capabilities=lambda: _model_capabilities(),
+        provider_usage=_provider_usage,
         list_web_chat_profiles=_list_web_chat_profiles,
         switch_web_chat_profile=_switch_web_chat_profile,
         list_web_chat_workspaces=_list_web_chat_workspaces,

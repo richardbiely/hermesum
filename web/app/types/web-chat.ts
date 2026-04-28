@@ -127,6 +127,30 @@ export type WebChatCapabilitiesResponse = {
   models: WebChatModelCapability[]
 }
 
+export type WebChatProviderUsageWindow = {
+  label: string
+  usedPercent: number
+  remainingPercent: number
+  windowMinutes?: number | null
+  resetsAt?: string | null
+}
+
+export type WebChatProviderUsageLimit = {
+  id: string
+  label: string
+  windows: WebChatProviderUsageWindow[]
+}
+
+export type WebChatProviderUsageResponse = {
+  provider: string
+  model?: string | null
+  source: string
+  available: boolean
+  unavailableReason?: string | null
+  limits: WebChatProviderUsageLimit[]
+  capturedAt?: string | null
+}
+
 export type WebChatUpdateStatusResponse = {
   updateAvailable: boolean
   runtimeOutOfSync: boolean

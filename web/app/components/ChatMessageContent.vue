@@ -48,6 +48,7 @@ const props = defineProps<{
   editingMessageId: string | null
   savingEditedMessageId: string | null
   isRunning: boolean
+  isActiveRunMessage: boolean
   workspace: string | null
   setEditingMessageContainer: (el: unknown) => void
   latestChangePartKey: string | null
@@ -432,6 +433,7 @@ onBeforeUnmount(() => {
   </div>
 
   <div
+    v-if="!isActiveRunMessage"
     :class="[
       'pointer-events-none absolute -bottom-6 flex w-max max-w-none flex-nowrap items-center gap-1 whitespace-nowrap text-xs leading-4 text-muted opacity-0 transition-opacity group-hover/message:pointer-events-auto group-hover/message:opacity-100 group-focus-within/message:pointer-events-auto group-focus-within/message:opacity-100',
       openTooltipKey ? 'pointer-events-auto opacity-100' : '',

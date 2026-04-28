@@ -19,6 +19,7 @@ import type {
   WebChatFilePreview,
   WebChatFilePreviewReference,
   WebChatProfilesResponse,
+  WebChatProviderUsageResponse,
   WebChatAppUpdateStatusResponse,
   WebChatUpdateStatusResponse,
   SwitchProfileResponse,
@@ -72,6 +73,12 @@ export function useHermesApi() {
 
   return {
     getCapabilities: () => request<WebChatCapabilitiesResponse>('/api/web-chat/capabilities'),
+    getProviderUsage: (provider?: string | null, model?: string | null) => request<WebChatProviderUsageResponse>('/api/web-chat/provider-usage', {
+      query: {
+        provider: provider || undefined,
+        model: model || undefined
+      }
+    }),
     getUpdateStatus: () => request<WebChatUpdateStatusResponse>('/api/web-chat/update'),
     updateHermes: () => request<WebChatUpdateStatusResponse>('/api/web-chat/update', { method: 'POST' }),
     getAppUpdateStatus: () => request<WebChatAppUpdateStatusResponse>('/api/web-chat/app-update'),

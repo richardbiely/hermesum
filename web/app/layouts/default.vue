@@ -33,6 +33,7 @@ const profileSwitchPending = ref(false)
 const now = ref(new Date())
 const readMessageCounts = ref<Record<string, number>>({})
 const readMessageCountsLoaded = ref(false)
+const readMessageCountsSynced = ref(false)
 const renameSession = ref<WebChatSession | null>(null)
 const renameTitle = ref('')
 const confirmAction = ref<'duplicate' | 'delete' | null>(null)
@@ -417,10 +418,16 @@ function markSessionRead(sessionId: string, messageCount: number) {
   saveReadMessageCounts()
 }
 
+function initialReadMessageCount(session: Pick<WebChatSession, 'id' | 'messageCount'>) {
+  if (!readMessageCountsSynced.value) return session.messageCount || 0
+  return session.id === activeSidebarSessionId.value ? session.messageCount || 0 : 0
+}
+
 function syncReadMessageCounts() {
   if (!readMessageCountsLoaded.value) return
 
-  const next = syncInitialReadMessageCounts(sessions.value, readMessageCounts.value)
+  const next = syncInitialReadMessageCounts(sessions.value, readMessageCounts.value, initialReadMessageCount)
+  readMessageCountsSynced.value = true
   if (next === readMessageCounts.value) return
 
   readMessageCounts.value = next

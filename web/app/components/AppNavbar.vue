@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Ref } from 'vue'
+import type { WebChatProviderUsageResponse } from '~/types/web-chat'
 
 type UpdateControl = {
   visible: Ref<boolean>
@@ -17,6 +18,8 @@ const props = defineProps<{
     label: string
     detail?: string | null
   } | null
+  providerUsage?: WebChatProviderUsageResponse | null
+  providerUsageLoading?: boolean
   updateVisible?: boolean
   updatePending?: boolean
   updateCompleted?: boolean
@@ -61,33 +64,36 @@ function submitAppUpdate() {
     </template>
 
     <template #right>
-      <UButton
-        v-if="resolvedUpdateVisible"
-        size="sm"
-        variant="solid"
-        icon="i-lucide-refresh-cw"
-        :label="resolvedUpdateLabel"
-        :color="resolvedUpdateColor"
-        :loading="resolvedUpdatePending"
-        :disabled="resolvedUpdatePending || resolvedUpdateCompleted"
-        :title="resolvedUpdateTitle"
-        @click="submitUpdate"
-      />
-      <UButton
-        v-if="resolvedAppUpdateVisible"
-        size="sm"
-        variant="solid"
-        icon="i-lucide-download"
-        :label="resolvedAppUpdateLabel"
-        :color="resolvedAppUpdateColor"
-        :loading="resolvedAppUpdatePending"
-        :disabled="resolvedAppUpdatePending || resolvedAppUpdateCompleted"
-        :title="resolvedAppUpdateTitle"
-        @click="submitAppUpdate"
-      />
-      <UTooltip text="Toggle dark mode">
-        <UColorModeSwitch color="neutral" size="sm" />
-      </UTooltip>
+      <div class="flex items-center gap-3">
+        <ProviderUsageBadge :usage="providerUsage" :loading="providerUsageLoading" />
+        <UButton
+          v-if="resolvedUpdateVisible"
+          size="sm"
+          variant="solid"
+          icon="i-lucide-refresh-cw"
+          :label="resolvedUpdateLabel"
+          :color="resolvedUpdateColor"
+          :loading="resolvedUpdatePending"
+          :disabled="resolvedUpdatePending || resolvedUpdateCompleted"
+          :title="resolvedUpdateTitle"
+          @click="submitUpdate"
+        />
+        <UButton
+          v-if="resolvedAppUpdateVisible"
+          size="sm"
+          variant="solid"
+          icon="i-lucide-download"
+          :label="resolvedAppUpdateLabel"
+          :color="resolvedAppUpdateColor"
+          :loading="resolvedAppUpdatePending"
+          :disabled="resolvedAppUpdatePending || resolvedAppUpdateCompleted"
+          :title="resolvedAppUpdateTitle"
+          @click="submitAppUpdate"
+        />
+        <UTooltip text="Toggle dark mode">
+          <UColorModeSwitch color="neutral" size="sm" />
+        </UTooltip>
+      </div>
     </template>
   </UDashboardNavbar>
 </template>

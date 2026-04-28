@@ -11,6 +11,10 @@ const api = useHermesApi()
 const router = useRouter()
 const refreshSessions = inject<() => Promise<void> | void>('refreshSessions')
 const composer = useChatComposerCapabilities()
+const providerUsage = useProviderUsage(
+  computed(() => composer.capabilities.value?.provider || null),
+  composer.selectedModel
+)
 const activeChatRuns = useActiveChatRuns()
 const context = useChatComposerContext()
 const toast = useToast()
@@ -101,7 +105,11 @@ async function onSubmit() {
 <template>
   <UDashboardPanel>
     <template #header>
-      <AppNavbar title="New chat" />
+      <AppNavbar
+        title="New chat"
+        :provider-usage="providerUsage.usage.value"
+        :provider-usage-loading="providerUsage.loading.value"
+      />
     </template>
 
     <template #body>

@@ -21,7 +21,8 @@ export function readMessageCountForVisibleSession(
 
 export function syncInitialReadMessageCounts(
   sessions: Pick<WebChatSession, 'id' | 'messageCount'>[],
-  readMessageCounts: Record<string, number>
+  readMessageCounts: Record<string, number>,
+  initialReadCount = (session: Pick<WebChatSession, 'id' | 'messageCount'>) => Math.max(0, session.messageCount || 0)
 ) {
   let changed = false
   const next = { ...readMessageCounts }
@@ -29,7 +30,7 @@ export function syncInitialReadMessageCounts(
 
   for (const session of sessions) {
     if (next[session.id] === undefined) {
-      next[session.id] = Math.max(0, session.messageCount || 0)
+      next[session.id] = Math.max(0, initialReadCount(session) || 0)
       changed = true
     }
   }

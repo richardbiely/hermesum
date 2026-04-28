@@ -19,6 +19,10 @@ const sessionId = computed(() => String(route.params.id))
 const api = useHermesApi()
 const sessionCache = useWebChatSessionCache(api)
 const composer = useChatComposerCapabilities()
+const providerUsage = useProviderUsage(
+  computed(() => composer.capabilities.value?.provider || null),
+  composer.selectedModel
+)
 const activeChatRuns = useActiveChatRuns()
 const context = useChatComposerContext()
 const toast = useToast()
@@ -109,6 +113,10 @@ const {
 const error = computed(() => streamError.value)
 const latestGitChangePartKey = computed(() => latestChangePartKey(messages.value))
 const chatMessagesStatus = computed(() => chatStatus.value === 'submitted' ? 'streaming' : chatStatus.value)
+const activeRunAssistantMessageId = computed(() => {
+  if (!isRunning.value) return null
+  return [...messages.value].reverse().find(message => message.role === 'assistant')?.id ?? null
+})
 const showRunActivityIndicator = computed(() => Boolean(currentActivityLabel.value))
 const promptContextUsage = computed(() => {
   const model = composer.models.value.find(model => model.id === composer.selectedModel.value)
@@ -815,7 +823,12 @@ onBeforeUnmount(() => {
 <template>
   <UDashboardPanel>
     <template #header>
-      <AppNavbar :title="title" :workspace-status="workspaceStatus" />
+      <AppNavbar
+        :title="title"
+        :workspace-status="workspaceStatus"
+        :provider-usage="providerUsage.usage.value"
+        :provider-usage-loading="providerUsage.loading.value"
+      />
     </template>
 
     <template #body>
@@ -889,6 +902,7 @@ onBeforeUnmount(() => {
                 :editing-message-id="editingMessageId"
                 :saving-edited-message-id="savingEditedMessageId"
                 :is-running="isRunning"
+                :is-active-run-message="message.id === activeRunAssistantMessageId"
                 :workspace="context.selectedWorkspace.value"
                 :latest-change-part-key="latestGitChangePartKey"
                 :set-editing-message-container="setEditingMessageContainer"
