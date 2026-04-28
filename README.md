@@ -1,12 +1,13 @@
 # Hermesum
 
-Hermesum is a native web chat prototype for Hermes Agent: a cleaner, faster, more product-like interface for running agent conversations, streaming responses, tracking tool calls, and reviewing workspace changes in one place.
+Hermesum is a native web chat prototype for Hermes Agent: a focused, product-grade interface for running agent conversations, choosing workspaces and models, streaming responses, inspecting tool calls, and reviewing code changes without leaving the chat.
 
 It combines:
 
-- a modern web frontend built for a focused chat experience
-- a FastAPI web-chat API designed to mirror real Hermes runtime behavior
-- a local runtime bridge that patches a disposable Hermes copy instead of touching your real checkout
+- a polished Nuxt chat frontend built for everyday agent work
+- a FastAPI web-chat API that mirrors real Hermes runtime behavior
+- a disposable local Hermes runtime copy for safe iteration
+- workspace-aware files, attachments, and code-change history
 
 ## Preview
 
@@ -17,47 +18,104 @@ It combines:
 
 ## Why Hermesum
 
-Hermes Agent is powerful, but the prototype goal here is not just "make it work in a browser". The goal is to make it feel like a real product:
+Hermes Agent is powerful. Hermesum focuses on making that power feel approachable, observable, and controllable in a browser.
 
-- chat-first UX for day-to-day agent work
-- streaming responses over SSE with explicit run lifecycle handling
-- queued follow-up messages and steerable in-flight runs
-- visible reasoning and tool-call output
-- first-class workspace diff and git-changes visibility
-- workspace-aware sessions and project switching
-- attachment upload and inline preview
-- disposable runtime integration for safe local iteration
+The product direction is simple:
+
+- a chat-first workspace for serious agent sessions
+- fast streaming with clear run status, stop, continue, and steer controls
+- visible reasoning, tool activity, durations, and usage signals
+- workspace context with file previews and code-change history
+- practical controls for models, profiles, and project switching
 
 If someone lands on this repository, they should immediately understand that Hermesum is a serious prototype for a native Hermes chat experience, not a throwaway demo.
+
+## Product Highlights
+
+### Agent chat that feels alive
+
+- Streaming responses over SSE with clear run status and stop controls.
+- Queued follow-up messages for smoother continuation and steering.
+- Regenerate response support from the original user prompt.
+- In-flight activity indicators for a clearer sense of what the agent is doing.
+- Message editing, copying, attachments, and continuation flows designed around real chat usage.
+
+### Workspace-aware coding context
+
+- Workspace and project switching built into the conversation flow.
+- Code-change history captured from git so users can review what changed during a session.
+- Workspace snapshots and change surfaces that make file modifications visible from chat.
+- Local file previews for referenced workspace files, with safe text preview limits.
+
+### Better inspection and review
+
+- Detailed tool-call overviews instead of raw opaque execution blocks.
+- Duration tracking for reasoning and tool parts.
+- Usage metrics and context-window visibility for model-aware prompting.
+- Clipboard file paste support for quickly attaching screenshots and local files.
+
+### Model and profile controls
+
+- Provider, model, reasoning-effort, context-window, and auto-compression metadata surfaced in the UI.
+- Profile switching through the web-chat API.
 
 ## What Exists Today
 
 ### Frontend
 
-- web chat UI in [`web/`](web)
+- Nuxt web chat UI in [`web/`](web)
 - SSE run streaming with explicit stop handling
-- queued messages support for chat continuation and steer flows
+- queued messages, steering, and regenerate flows
+- model, reasoning-effort, context-usage, profile, and workspace controls
+- workspace/session management, pinning, unread states, and project switching
+- code-change history, workspace snapshots, and change review surfaces
+- attachment upload, clipboard file paste, inline previews, and local file preview modals
+- reasoning, tool-call, duration, usage, and activity detail views
 - authenticated same-origin API access
-- workspace/session management flows
-- git changes and workspace change review surfaces
-- attachment chips, previews, and tool-call detail views
 
 ### Backend
+
+Core web-chat routes include:
 
 - `GET /api/web-chat/sessions`
 - `POST /api/web-chat/sessions`
 - `GET /api/web-chat/sessions/{session_id}`
+- `PATCH /api/web-chat/sessions/{session_id}`
+- `PATCH /api/web-chat/sessions/{session_id}/messages/{message_id}`
+- `DELETE /api/web-chat/sessions/{session_id}`
+- `POST /api/web-chat/sessions/{session_id}/duplicate`
 - `POST /api/web-chat/runs`
 - `GET /api/web-chat/runs/{run_id}/events`
+- `POST /api/web-chat/runs/{run_id}/steer`
 - `POST /api/web-chat/runs/{run_id}/stop`
+- `POST /api/web-chat/runs/{run_id}/prompts/{prompt_id}/response`
+- `GET /api/web-chat/commands`
+- `POST /api/web-chat/commands/execute`
+- `GET /api/web-chat/capabilities`
+- `GET /api/web-chat/profiles`
+- `POST /api/web-chat/profiles/active`
+- `GET /api/web-chat/workspaces`
+- `POST /api/web-chat/workspaces`
+- `PATCH /api/web-chat/workspaces/{workspace_id}`
+- `DELETE /api/web-chat/workspaces/{workspace_id}`
+- `GET /api/web-chat/workspace-directories`
+- `GET /api/web-chat/workspace-changes`
+- `POST /api/web-chat/file-preview`
 - `POST /api/web-chat/attachments`
 - `GET /api/web-chat/attachments/{attachment_id}`
 - `GET /api/web-chat/attachments/{attachment_id}/content`
+- `GET /api/web-chat/update`
+- `POST /api/web-chat/update`
+- `GET /api/web-chat/app-update`
+- `POST /api/web-chat/app-update`
+
+The backend is built around explicit run management, SSE event streaming, queue-backed prompts, typed Pydantic responses, workspace validation, and modular route domains so interactive runs can be stopped, continued, inspected, and coordinated predictably.
+
+Git integration is currently used for code-change history: capturing and surfacing what changed in a selected workspace during a session. It is not positioned as a full git client, branch manager, or deployment workflow yet.
+
 Attachments uploaded from the UI are stored in the selected project under `.hermes/attachments/`, ignored by git in this prototype. Images render inline, other files use the authenticated content endpoint when supported by the browser, and deleted files remain visible in history as unavailable placeholders.
 
-The backend is built around explicit run management, SSE event streaming, and queue-backed prompt/response handling so interactive runs can be stopped, continued, and coordinated predictably.
-
-Hermesum also emphasizes workspace-aware `git changes` visibility. The prototype is designed to make code and file modifications easier to inspect from the chat experience instead of hiding them behind the agent runtime.
+Local file previews are resolved against the selected workspace or its git root, limited to safe text preview sizes, and include language/media metadata for better code reading in the UI.
 
 ## Safety Model
 
@@ -67,7 +125,7 @@ Hermesum treats this repository as the source of truth for prototype work.
 - Runtime integration happens through the disposable `.runtime/hermes-agent` copy created by [`run-local.sh`](run-local.sh).
 - The upstream Hermes checkout is copied from, not mutated as part of normal development.
 
-This keeps the prototype portable and makes later upstreaming into the real Hermes repository much safer.
+This keeps the prototype portable and easier to upstream into Hermes Agent later.
 
 ## Quick Start
 
@@ -89,6 +147,7 @@ This mode:
 - shares an ephemeral dev session token for authenticated API and SSE calls
 - reloads frontend changes through Vite HMR
 - restarts the backend when watched Python files change
+- cleans up stale local server ports before startup
 
 Useful override:
 
@@ -114,19 +173,30 @@ For production-style preview through the disposable Hermes runtime:
 ./run-local.sh
 ```
 
+### Runtime sync only
+
+To refresh the disposable Hermes runtime copy without starting the app:
+
+```bash
+./run-local.sh --sync-runtime
+```
+
 ## Repo Structure
 
 ```text
 backend/
-  hermes_cli/web_chat.py                    # thin FastAPI entrypoint
+  hermes_cli/web_chat.py                    # FastAPI web-chat entrypoint
   hermes_cli/web_chat_modules/              # modular backend domains
   tests/hermes_cli/test_web_chat*.py        # split pytest coverage by domain
 web/                                        # Nuxt UI prototype
+  app/components/                           # chat, sidebar, tool, preview, and layout UI
+  app/composables/                          # API, active runs, composer, and workspace state
+  app/utils/                                # message, clipboard, file preview, and tool helpers
 run-local.sh                                # local runtime orchestration
 .runtime/                                   # disposable generated runtime state
 ```
 
-Key frontend areas include chat rendering, queued-message flows, attachments, tool-call details, git changes, and workspace/session UX. Key backend areas include routes, Pydantic models, run lifecycle, SSE streaming, queue-backed prompts, attachments, workspaces, and git-change persistence.
+Key frontend areas include chat rendering, queued-message flows, attachments, file previews, tool-call details, code-change history, update controls, and workspace/session UX. Key backend areas include routes, Pydantic models, run lifecycle, SSE streaming, queue-backed prompts, attachments, workspaces, capabilities, updates, file previews, and git-change persistence.
 
 ## Development Notes
 
@@ -134,6 +204,7 @@ Key frontend areas include chat rendering, queued-message flows, attachments, to
 - Python restarts in watch/dev mode can interrupt in-flight SSE streams.
 - Shared request/response shapes should stay aligned between backend Pydantic models and frontend TypeScript types.
 - When backend payloads change, update backend models, API behavior, frontend types, frontend composables, and tests together.
+- Treat workspace, file-preview, git-history, and update features as high-trust flows; prefer explicit validation and clear UI feedback.
 
 ## Verification
 
@@ -144,20 +215,13 @@ pnpm typecheck
 pnpm build
 ```
 
-Backend syntax verification:
+Backend verification:
 
 ```bash
 python3 -m py_compile backend/hermes_cli/web_chat.py backend/hermes_cli/web_chat_modules/*.py backend/tests/hermes_cli/test_web_chat*.py backend/tests/hermes_cli/conftest.py backend/tests/hermes_cli/web_chat_test_helpers.py
-```
-
-Latest recorded verification status for this prototype:
-
-```bash
-pytest: 6 passed in 1.12s
-pnpm typecheck: exit 0
-pnpm build: complete
+pytest backend/tests/hermes_cli/test_web_chat*.py
 ```
 
 ## Positioning
 
-Hermesum is not trying to replace Hermes Agent internals. It is a prototype for a better operator experience on top of them: more understandable, more approachable, and much closer to something people would actually want to use every day.
+Hermesum is not trying to replace Hermes Agent internals. It is a prototype for a better operator experience on top of them: more understandable, more inspectable, clearer around code changes, and much closer to something people would actually want to use every day.
