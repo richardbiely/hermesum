@@ -176,6 +176,26 @@ function formatDuration(milliseconds: number) {
   return remainingSeconds ? `${minutes}m ${remainingSeconds}s` : `${minutes}m`
 }
 
+function dateMs(value?: string | null) {
+  if (!value) return null
+  const time = new Date(value).getTime()
+  return Number.isFinite(time) ? time : null
+}
+
+export function formatProcessPartDuration(part: WebChatPart, now = new Date()) {
+  const explicitDuration = finitePositive(part.durationMs)
+  const startedAt = dateMs(part.startedAt)
+  const completedAt = dateMs(part.completedAt)
+  const duration = explicitDuration ?? (startedAt ? (completedAt ?? now.getTime()) - startedAt : null)
+  if (!duration || duration < 1000) return ''
+
+  const totalSeconds = Math.max(1, Math.floor(duration / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (!minutes) return `${seconds}s`
+  return seconds ? `${minutes}m ${seconds}s` : `${minutes}m`
+}
+
 export function formatMessageGenerationDuration(message: WebChatMessage) {
   const milliseconds = finitePositive(message.generationDurationMs)
   return milliseconds && milliseconds >= 1000 ? formatDuration(milliseconds) : ''

@@ -5,7 +5,7 @@ import { createRunEventReplay } from '../utils/runEventReplay'
 
 type RunEventPayload = Record<string, unknown>
 
-type ToolRunPayload = { name?: string, preview?: string, input?: unknown }
+type ToolRunPayload = { name?: string, preview?: string, input?: unknown, occurredAt?: string }
 
 type CompletedRunPayload = {
   content?: string
@@ -123,6 +123,10 @@ function statusFromPayload(payload: RunEventPayload): AgentStatusEvent | null {
 function numericMetric(metrics: Record<string, unknown>, key: string) {
   const value = metrics[key]
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function eventTimestamp() {
+  return new Date().toISOString()
 }
 
 export function useActiveChatRuns() {
@@ -243,7 +247,8 @@ export function useActiveChatRuns() {
       recordAndNotify(run, 'onToolStarted', {
         name: typeof payload.name === 'string' ? payload.name : undefined,
         preview: typeof payload.preview === 'string' ? payload.preview : undefined,
-        input: payload.input
+        input: payload.input,
+        occurredAt: eventTimestamp()
       })
     })
 
@@ -253,7 +258,8 @@ export function useActiveChatRuns() {
       recordAndNotify(run, 'onToolCompleted', {
         name: typeof payload.name === 'string' ? payload.name : undefined,
         preview: typeof payload.preview === 'string' ? payload.preview : undefined,
-        input: payload.input
+        input: payload.input,
+        occurredAt: eventTimestamp()
       })
     })
 

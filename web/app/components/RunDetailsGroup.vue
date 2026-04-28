@@ -16,6 +16,15 @@ watch(() => props.expandedDefault, value => {
 
 const summary = computed(() => processGroupSummary(props.parts))
 const hasFailure = computed(() => summary.value.includes('failed'))
+
+function isStreamingReasoning(part: WebChatPart) {
+  return part.type === 'reasoning' && part.status === 'streaming'
+}
+
+function reasoningDurationSeconds(part: WebChatPart) {
+  if (typeof part.durationMs !== 'number' || !Number.isFinite(part.durationMs)) return undefined
+  return Math.max(1, Math.round(part.durationMs / 1000))
+}
 </script>
 
 <template>
@@ -45,7 +54,12 @@ const hasFailure = computed(() => summary.value.includes('failed'))
 
     <div v-if="expanded" class="space-y-1 border-t border-default px-3 py-2">
       <template v-for="(part, index) in parts" :key="`${part.type}-${part.name || index}-${index}`">
-        <UChatReasoning v-if="part.type === 'reasoning'" :text="partText(part)">
+        <UChatReasoning
+          v-if="part.type === 'reasoning'"
+          :text="partText(part)"
+          :streaming="isStreamingReasoning(part)"
+          :duration="reasoningDurationSeconds(part)"
+        >
           <Comark :markdown="partText(part)" :plugins="[highlight()]" class="*:first:mt-0 *:last:mb-0" />
         </UChatReasoning>
 

@@ -4,6 +4,7 @@ import type { ToolDetailSection } from '~/utils/toolCallDetails'
 import { writeClipboardText } from '~/utils/clipboard'
 import { toolCallTitle, toolDisplayName, toolOutputSummary } from '~/utils/toolCalls'
 import { toolDetailSections } from '~/utils/toolCallDetails'
+import { formatProcessPartDuration } from '~/utils/chatMessages'
 
 const props = defineProps<{
   part: WebChatPart
@@ -11,9 +12,11 @@ const props = defineProps<{
 
 const toolName = computed(() => toolDisplayName(props.part))
 const isRunning = computed(() => ['running', 'thinking', 'streaming', 'started'].includes(String(props.part.status || '')))
+const now = ref(new Date())
 const copiedSection = ref<string | null>(null)
 const wrappedSections = ref<Record<string, boolean>>({})
 let copiedTimer: ReturnType<typeof setTimeout> | undefined
+let durationTimer: ReturnType<typeof setInterval> | undefined
 
 function isWrapped(label: string) {
   return wrappedSections.value[label] === true
@@ -36,10 +39,18 @@ async function copySection(section: ToolDetailSection) {
   }, 1600)
 }
 
-onBeforeUnmount(() => {
-  if (copiedTimer) clearTimeout(copiedTimer)
+onMounted(() => {
+  durationTimer = setInterval(() => {
+    if (isRunning.value) now.value = new Date()
+  }, 1000)
 })
 
+onBeforeUnmount(() => {
+  if (copiedTimer) clearTimeout(copiedTimer)
+  if (durationTimer) clearInterval(durationTimer)
+})
+
+const durationLabel = computed(() => formatProcessPartDuration(props.part, now.value))
 const sections = computed(() => toolDetailSections(props.part))
 
 const summary = computed(() => {
@@ -71,6 +82,14 @@ const actionLabel = computed(() => toolCallTitle(props.part))
       </span>
       <span v-if="summary" class="min-w-0 truncate text-dimmed" :class="{ 'tool-call-shimmer': isRunning }">
         {{ summary }}
+      </span>
+      <span
+        v-if="durationLabel"
+        class="ml-auto inline-flex shrink-0 items-center gap-1 rounded-full bg-muted/50 px-1.5 py-0.5 font-mono text-[11px] leading-none text-dimmed tabular-nums"
+        :title="isRunning ? 'Elapsed time' : 'Duration'"
+      >
+        <span v-if="isRunning" class="size-1.5 rounded-full bg-primary/70 animate-pulse" aria-hidden="true" />
+        {{ durationLabel }}
       </span>
     </button>
 

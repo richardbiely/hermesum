@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { formatMessageGenerationDuration, formatMessageTimestamp, formatMessageTokenCount, groupMessageParts, latestChangePartKey, messageDurationDetails, messagePartKey, messageText, messageTokenDetails, processGroupSummary } from '../app/utils/chatMessages.ts'
+import { formatMessageGenerationDuration, formatMessageTimestamp, formatMessageTokenCount, formatProcessPartDuration, groupMessageParts, latestChangePartKey, messageDurationDetails, messagePartKey, messageText, messageTokenDetails, processGroupSummary } from '../app/utils/chatMessages.ts'
 
 test('groups consecutive process parts together', () => {
   const groups = groupMessageParts([
@@ -156,6 +156,23 @@ test('formats message token details', () => {
     { label: 'Reasoning', value: '23 tokens' },
     { label: 'API calls', value: '2' }
   ])
+})
+
+test('formats process part duration', () => {
+  assert.equal(formatProcessPartDuration({
+    type: 'tool',
+    startedAt: '2026-01-01T10:00:00.000Z'
+  }, new Date('2026-01-01T10:00:12.900Z')), '12s')
+
+  assert.equal(formatProcessPartDuration({
+    type: 'reasoning',
+    durationMs: 65_000
+  }), '1m 5s')
+
+  assert.equal(formatProcessPartDuration({
+    type: 'tool',
+    durationMs: 500
+  }), '')
 })
 
 test('formats message generation duration', () => {

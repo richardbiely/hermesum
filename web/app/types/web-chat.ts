@@ -61,6 +61,9 @@ export type WebChatPart = {
   text?: string | null
   name?: string | null
   status?: string | null
+  startedAt?: string | null
+  completedAt?: string | null
+  durationMs?: number | null
   input?: unknown
   output?: unknown
   url?: string | null

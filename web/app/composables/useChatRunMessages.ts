@@ -85,6 +85,7 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
     hasAssistantResponseStarted.value = true
     const assistant = assistantMessage()
     removeThinkingPart(assistant)
+    completeOpenReasoning(assistant)
 
     const textPart = assistant.parts.find(part => part.type === 'text')
     if (textPart) {
@@ -126,9 +127,16 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
     const assistant = assistantMessage()
     removeThinkingPart(assistant)
     applyRunMetrics(assistant, payload)
+    const completedAt = new Date().toISOString()
     for (const part of assistant.parts) {
-      if (part.type === 'reasoning' && part.status === 'streaming') part.status = null
-      if (part.type === 'tool' && part.status === 'running') part.status = 'completed'
+      if (part.type === 'reasoning' && part.status === 'streaming') {
+        part.status = null
+        completeProcessPart(part, completedAt)
+      }
+      if (part.type === 'tool' && part.status === 'running') {
+        part.status = 'completed'
+        completeProcessPart(part, completedAt)
+      }
     }
     if (payload.content) {
       const textPart = assistant.parts.find(part => part.type === 'text')
@@ -142,6 +150,23 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
     appendCompletedChanges(payload.changes)
   }
 
+  function completeProcessPart(part: WebChatPart, completedAt = new Date().toISOString()) {
+    if (part.completedAt) return
+    part.completedAt = completedAt
+    const startedAt = part.startedAt ? new Date(part.startedAt).getTime() : null
+    const endedAt = new Date(completedAt).getTime()
+    if (startedAt && Number.isFinite(startedAt) && Number.isFinite(endedAt)) {
+      part.durationMs = Math.max(0, endedAt - startedAt)
+    }
+  }
+
+  function completeOpenReasoning(message: WebChatMessage) {
+    const reasoningPart = message.parts.findLast(part => part.type === 'reasoning' && part.status === 'streaming')
+    if (!reasoningPart) return
+    reasoningPart.status = null
+    completeProcessPart(reasoningPart)
+  }
+
   function appendReasoningDelta(content: string) {
     if (!content) return
 
@@ -153,11 +178,11 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
     if (lastPart?.type === 'reasoning') {
       lastPart.text = `${lastPart.text || ''}${content}`
     } else {
-      assistant.parts.push({ type: 'reasoning', text: content, status: 'streaming' })
+      assistant.parts.push({ type: 'reasoning', text: content, status: 'streaming', startedAt: new Date().toISOString() })
     }
   }
 
-  function appendToolStarted(payload: { name?: string, preview?: string, input?: unknown }) {
+  function appendToolStarted(payload: { name?: string, preview?: string, input?: unknown, occurredAt?: string }) {
     hasAssistantResponseStarted.value = true
     let assistant = messages.value[messages.value.length - 1]
     if (!assistant || assistant.role !== 'assistant') {
@@ -167,11 +192,13 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
 
     const thinkingIndex = assistant.parts.findIndex(part => part.status === 'thinking')
     if (thinkingIndex >= 0) assistant.parts.splice(thinkingIndex, 1)
+    completeOpenReasoning(assistant)
 
     const toolPart: WebChatPart = {
       type: 'tool',
       name: payload.name,
       status: 'running',
+      startedAt: payload.occurredAt || new Date().toISOString(),
       input: payload.input ?? payload.preview ?? null
     }
     toolPart.name = toolDisplayName(toolPart)
@@ -182,13 +209,18 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
     hasAssistantResponseStarted.value = true
     const assistant = assistantMessage()
     removeThinkingPart(assistant)
+    completeOpenReasoning(assistant)
     assistant.parts.push({ type: 'status', text: payload.message, status: payload.kind })
   }
 
-  function markToolCompleted(payload: { name?: string }) {
+  function markToolCompleted(payload: { name?: string, occurredAt?: string }) {
     const assistant = [...messages.value].reverse().find(message => message.role === 'assistant')
-    const toolPart = assistant?.parts.findLast(part => part.type === 'tool' && part.status === 'running' && (!payload.name || part.name === payload.name))
-    if (toolPart) toolPart.status = 'completed'
+    const displayName = payload.name ? toolDisplayName({ name: payload.name }) : null
+    const toolPart = assistant?.parts.findLast(part => part.type === 'tool' && part.status === 'running' && (!payload.name || part.name === payload.name || part.name === displayName))
+    if (toolPart) {
+      toolPart.status = 'completed'
+      completeProcessPart(toolPart, payload.occurredAt || new Date().toISOString())
+    }
   }
 
   function appendPrompt(prompt: InteractivePrompt) {
