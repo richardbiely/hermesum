@@ -200,7 +200,7 @@ const workspaceStatus = computed(() => {
   }
 })
 
-async function copyUserMessage(message: WebChatMessage) {
+async function copyMessage(message: WebChatMessage) {
   const text = messageText(message)
   if (!text) return
 
@@ -711,7 +711,7 @@ onBeforeUnmount(() => {
                 :is-running="isRunning"
                 :latest-change-part-key="latestGitChangePartKey"
                 :set-editing-message-container="setEditingMessageContainer"
-                @copy="copyUserMessage"
+                @copy="copyMessage"
                 @edit="startEditingMessage"
                 @cancel-edit="cancelEditingMessage"
                 @save-edit="saveEditedMessage"

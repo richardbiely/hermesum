@@ -129,13 +129,15 @@ const emit = defineEmits<{
   </div>
 
   <div
-    v-if="message.role === 'user'"
-    class="pointer-events-none absolute -bottom-6 right-0 flex w-max max-w-none flex-nowrap items-center justify-end gap-1 whitespace-nowrap text-xs leading-4 text-muted opacity-0 transition-opacity group-hover/message:pointer-events-auto group-hover/message:opacity-100 group-focus-within/message:pointer-events-auto group-focus-within/message:opacity-100"
+    :class="[
+      'pointer-events-none absolute -bottom-6 flex w-max max-w-none flex-nowrap items-center gap-1 whitespace-nowrap text-xs leading-4 text-muted opacity-0 transition-opacity group-hover/message:pointer-events-auto group-hover/message:opacity-100 group-focus-within/message:pointer-events-auto group-focus-within/message:opacity-100',
+      message.role === 'user' ? 'right-0 justify-end' : 'left-0 justify-start'
+    ]"
   >
     <span class="whitespace-nowrap" :title="messageTimestampTitle(message.createdAt)">
       {{ formatMessageTimestamp(message.createdAt) }}
     </span>
-    <UTooltip text="Edit prompt">
+    <UTooltip v-if="message.role === 'user'" text="Edit prompt">
       <button
         type="button"
         class="inline-flex size-4 flex-none items-center justify-center text-muted hover:text-highlighted focus-visible:outline-2 focus-visible:outline-primary/50"
