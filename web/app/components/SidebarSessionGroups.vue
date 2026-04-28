@@ -172,7 +172,7 @@ function sessionActionItems(session: WebChatSession): DropdownMenuItem[] {
           class="group flex h-8 w-full min-w-0 cursor-pointer items-center gap-1 rounded-md px-2 text-left text-sm outline-none hover:bg-elevated focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-within:bg-elevated"
           :class="[
             isActiveSession(session) ? 'bg-elevated text-highlighted' : 'text-default',
-            isUnreadSession(session) ? 'font-semibold text-black dark:text-white' : 'font-normal'
+            isUnreadSession(session) ? 'font-bold text-black dark:text-white' : 'font-normal'
           ]"
           @click="emit('openSession', session)"
           @keydown.enter.prevent="emit('openSession', session)"
