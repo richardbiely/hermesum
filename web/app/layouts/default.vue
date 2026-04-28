@@ -61,6 +61,11 @@ const UPDATE_STATUS_CHECK_INTERVAL_MS = 20 * 60 * 1000
 const SESSION_PREFETCH_MESSAGE_LIMIT = 60
 let timer: ReturnType<typeof setInterval> | undefined
 let unsubscribeRunFinished: (() => void) | undefined
+const requestedSessionId = ref<string | null>(null)
+const activeSidebarSessionId = computed(() => {
+  if (requestedSessionId.value) return requestedSessionId.value
+  return typeof route.params.id === 'string' ? route.params.id : undefined
+})
 
 const renameModalOpen = computed({
   get: () => Boolean(renameSession.value),
@@ -548,9 +553,18 @@ function prefetchSession(session: WebChatSession) {
 }
 
 function openSession(session: WebChatSession) {
-  prefetchSession(session)
-  void router.push(`/chat/${session.id}`)
+  requestedSessionId.value = session.id
+  void router.push(`/chat/${session.id}`).catch(() => {
+    requestedSessionId.value = null
+  })
 }
+
+watch(
+  () => route.params.id,
+  (id) => {
+    if (requestedSessionId.value === id) requestedSessionId.value = null
+  }
+)
 
 watch(
   () => [route.params.id, sessions.value.map(session => `${session.id}:${session.messageCount}`).join('|')],
@@ -582,6 +596,7 @@ onBeforeUnmount(() => {
 
 provide('refreshSessions', refresh)
 provide('markSessionRead', markSessionRead)
+provide('requestedSessionId', readonly(requestedSessionId))
 provide('hermesUpdateControl', {
   visible: showUpdateButton,
   pending: updatePending,
@@ -662,7 +677,7 @@ provide('appUpdateControl', {
 
         <SidebarSessionGroups
           :groups="groupedSessions"
-          :active-session-id="typeof route.params.id === 'string' ? route.params.id : undefined"
+          :active-session-id="activeSidebarSessionId"
           :pending-session-id="pendingSessionId"
           :now="now"
           :read-message-counts="readMessageCounts"

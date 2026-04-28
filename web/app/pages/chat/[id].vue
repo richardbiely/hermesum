@@ -39,6 +39,7 @@ let preserveScrollAfterPrepend: { root: Element, previousScrollHeight: number, p
 let copiedMessageTimer: ReturnType<typeof setTimeout> | undefined
 const refreshSessions = inject<() => Promise<void> | void>('refreshSessions')
 const markSessionRead = inject<(sessionId: string, messageCount: number) => void>('markSessionRead')
+const requestedSessionId = inject<Readonly<Ref<string | null>>>('requestedSessionId')
 let optimisticUserMessageIds = new Set<string>()
 let bottomReadObserver: IntersectionObserver | undefined
 let olderMessagesObserver: IntersectionObserver | undefined
@@ -79,7 +80,8 @@ const olderMessagesLabel = computed(() => {
   if (!total) return 'Load earlier messages'
   return `Load earlier messages (${messages.value.length}/${total})`
 })
-const isLoadingSession = computed(() => (sessionStatus.value === 'idle' || sessionStatus.value === 'pending') && !displayedData.value)
+const isSwitchingSession = computed(() => Boolean(requestedSessionId?.value && requestedSessionId.value !== sessionId.value))
+const isLoadingSession = computed(() => isSwitchingSession.value || ((sessionStatus.value === 'idle' || sessionStatus.value === 'pending') && !displayedData.value))
 const hasSession = computed(() => Boolean(displayedData.value?.session))
 const {
   messages,
@@ -826,8 +828,8 @@ onBeforeUnmount(() => {
             class="flex animate-pulse"
             :class="index % 2 === 0 ? 'justify-end' : 'justify-start'"
           >
-            <div
-              class="rounded-2xl bg-muted"
+            <USkeleton
+              class="rounded-2xl"
               :class="[
                 index % 2 === 0 ? 'h-10 w-3/5' : 'h-20 w-4/5',
                 index === loadingSkeletonCount ? 'opacity-45' : 'opacity-70'
