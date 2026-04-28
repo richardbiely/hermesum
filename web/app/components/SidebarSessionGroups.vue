@@ -169,7 +169,7 @@ function sessionActionItems(session: WebChatSession): DropdownMenuItem[] {
           :key="session.id"
           role="button"
           tabindex="0"
-          class="group flex h-8 w-full min-w-0 cursor-pointer items-center gap-1 rounded-md px-2 text-left text-sm outline-none hover:bg-elevated focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-within:bg-elevated"
+          class="group relative flex h-8 w-full min-w-0 cursor-pointer items-center gap-1 rounded-md px-2 text-left text-sm outline-none hover:bg-elevated focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-within:bg-elevated"
           :class="[
             isActiveSession(session) ? 'bg-elevated text-highlighted' : 'text-default',
             isUnreadSession(session) ? 'font-bold text-black dark:text-white' : 'font-normal'
@@ -180,15 +180,10 @@ function sessionActionItems(session: WebChatSession): DropdownMenuItem[] {
           @dblclick.stop.prevent="isActiveSession(session) && renameSession(session)"
           @contextmenu.prevent="openSessionContextMenu(session, $event)"
         >
-          <span v-if="isUnreadSession(session)" class="flex h-full shrink-0 items-center pr-1.5">
-            <UChip
-              standalone
-              size="sm"
-              color="primary"
-              aria-hidden="true"
-            />
+          <span v-if="isUnreadSession(session)" class="absolute inset-y-0 left-2 flex items-center" aria-hidden="true">
+            <span class="block size-1.5 rounded-full bg-primary" />
           </span>
-          <span class="min-w-0 flex-1 truncate">
+          <span class="min-w-0 flex-1 truncate" :class="isUnreadSession(session) ? 'pl-4' : undefined">
             {{ sessionTitle(session) }}
           </span>
 
