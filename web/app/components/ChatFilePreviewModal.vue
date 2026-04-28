@@ -10,19 +10,22 @@ const props = defineProps<{
 }>()
 
 const isMarkdown = computed(() => props.preview?.language === 'markdown' || props.preview?.name.endsWith('.md'))
+const isCodePreview = computed(() => Boolean(props.preview?.previewable && !isMarkdown.value))
 const previewPath = computed(() => props.preview?.relativePath || props.preview?.path || props.preview?.requestedPath || 'File preview')
 const meta = computed(() => {
   if (!props.preview) return null
   return `${props.preview.mediaType} · ${formatBytes(props.preview.size)}${props.preview.truncated ? ' · truncated' : ''}`
 })
 const markdownPlugins = [highlight()]
-const codeLines = computed(() => splitPreviewLines(props.preview?.content || ''))
+const codeMarkdown = computed(() => {
+  if (!props.preview) return ''
+  return fencedCodeBlock(props.preview.content || '', props.preview.language || '')
+})
 
-function splitPreviewLines(content: string) {
-  if (!content) return ['']
-  const lines = content.split('\n')
-  if (lines.length > 1 && lines[lines.length - 1] === '') lines.pop()
-  return lines
+function fencedCodeBlock(content: string, language: string) {
+  const longestFence = Math.max(2, ...Array.from(content.matchAll(/`+/g), match => match[0].length))
+  const fence = '`'.repeat(longestFence + 1)
+  return `${fence}${language}\n${content}\n${fence}`
 }
 
 function formatBytes(bytes: number) {
@@ -58,14 +61,14 @@ function formatBytes(bytes: number) {
           />
         </div>
 
-        <div class="min-h-0 flex-1 overflow-auto p-4">
+        <div class="min-h-[60vh] flex-1 overflow-auto p-4">
 
-          <div v-if="loading" class="flex min-h-40 items-center justify-center gap-2 text-sm text-muted">
+          <div v-if="loading" class="flex min-h-[60vh] items-center justify-center gap-2 text-sm text-muted">
             <UIcon name="i-lucide-loader-circle" class="size-4 animate-spin" />
             <span>Loading preview…</span>
           </div>
 
-          <div v-else-if="error" class="flex min-h-40 flex-col items-center justify-center gap-2 text-center text-sm text-muted">
+          <div v-else-if="error" class="flex min-h-[60vh] flex-col items-center justify-center gap-2 text-center text-sm text-muted">
             <UIcon name="i-lucide-file-x" class="size-6" />
             <span>{{ error }}</span>
           </div>
@@ -82,14 +85,17 @@ function formatBytes(bytes: number) {
             class="chat-file-preview-markdown *:first:mt-0 *:last:mb-0"
           />
 
+          <Comark
+            v-else-if="preview && isCodePreview"
+            :markdown="codeMarkdown"
+            :plugins="markdownPlugins"
+            class="chat-file-preview-code *:first:mt-0 *:last:mb-0"
+          />
+
           <pre
             v-else-if="preview"
-            class="chat-file-preview-code overflow-x-auto rounded-md bg-muted/40 py-3 text-xs leading-5"
-          ><code><span
-            v-for="(line, index) in codeLines"
-            :key="index"
-            class="chat-file-preview-line"
-          ><span class="chat-file-preview-line-number">{{ index + 1 }}</span><span class="chat-file-preview-line-content">{{ line || ' ' }}</span></span></code></pre>
+            class="chat-file-preview-code overflow-x-auto rounded-md bg-muted/40 p-3 text-xs leading-5 whitespace-pre-wrap"
+          ><code>{{ preview.content || '' }}</code></pre>
         </div>
       </div>
     </template>

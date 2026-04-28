@@ -69,27 +69,24 @@ button.chat-preview-path {
   overflow-x: auto;
 }
 
-.chat-file-preview-line {
-  display: table-row;
+.chat-file-preview-code :where(pre) {
+  counter-reset: chat-file-preview-line;
 }
 
-.chat-file-preview-line-number,
-.chat-file-preview-line-content {
-  display: table-cell;
+.chat-file-preview-code :where(.line) {
+  display: block;
+  min-width: max-content;
 }
 
-.chat-file-preview-line-number {
+.chat-file-preview-code :where(.line)::before {
+  display: inline-block;
   min-width: 3rem;
-  padding-inline: 0.75rem;
+  padding-inline: 0 0.75rem;
   user-select: none;
   text-align: right;
   color: var(--ui-text-muted);
-}
-
-.chat-file-preview-line-content {
-  min-width: 100%;
-  padding-right: 1rem;
-  white-space: pre;
+  content: counter(chat-file-preview-line);
+  counter-increment: chat-file-preview-line;
 }
 
 .chat-message-markdown :where(pre) {

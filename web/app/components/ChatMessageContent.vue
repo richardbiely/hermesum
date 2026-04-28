@@ -6,6 +6,7 @@ import { formatMessageGenerationDuration, formatMessageTimestamp, formatMessageT
 
 const editingText = defineModel<string>('editingText', { required: true })
 const api = useHermesApi()
+const filePreviewCache = useFilePreviewCache()
 const openTooltipKey = ref<string | null>(null)
 const messageContentRoot = ref<HTMLElement | null>(null)
 const previewOpen = ref(false)
@@ -229,21 +230,29 @@ function previewPathFromEvent(event: Event) {
   return target?.dataset.previewPath || null
 }
 
+function waitForPreviewModalPaint() {
+  if (typeof window === 'undefined') return nextTick()
+  return new Promise<void>((resolve) => {
+    void nextTick(() => {
+      window.requestAnimationFrame(() => resolve())
+    })
+  })
+}
+
 async function openFilePreview(path: string) {
-  const wasOpen = previewOpen.value
+  previewOpen.value = true
   previewLoading.value = true
   previewError.value = null
   preview.value = null
 
-  if (wasOpen) previewOpen.value = true
+  await waitForPreviewModalPaint()
 
   try {
-    preview.value = await api.fetchFilePreview({ path, workspace: props.workspace })
+    preview.value = await filePreviewCache.fetchFilePreview({ path, workspace: props.workspace })
   } catch (err) {
     previewError.value = err instanceof Error ? err.message : 'Could not load preview'
   } finally {
     previewLoading.value = false
-    previewOpen.value = true
   }
 }
 

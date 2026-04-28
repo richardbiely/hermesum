@@ -73,6 +73,21 @@ def test_file_preview_allows_absolute_path_inside_workspace(client, tmp_path):
     assert body["language"] == "typescript"
 
 
+def test_file_preview_detects_vue_sources(client, tmp_path):
+    repo = git_repo(tmp_path)
+    source = repo / "components" / "Example.vue"
+    source.parent.mkdir()
+    source.write_text("<template><div>Hello</div></template>\n", encoding="utf-8")
+
+    response = post_preview(client, "components/Example.vue", str(repo))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["mediaType"] == "text/vue"
+    assert body["language"] == "vue"
+    assert body["previewable"] is True
+
+
 def test_file_preview_rejects_parent_traversal_outside_workspace(client, tmp_path):
     repo = git_repo(tmp_path)
     secret = tmp_path / "secret.md"

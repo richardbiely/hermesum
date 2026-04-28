@@ -165,7 +165,8 @@ def preview_file(requested_path: str, workspace: str | None, *, validate_workspa
             reason="File type cannot be previewed as text",
         )
 
-    raw = path.read_bytes()[: MAX_FILE_PREVIEW_BYTES + 1]
+    with path.open("rb") as file:
+        raw = file.read(MAX_FILE_PREVIEW_BYTES + 1)
     truncated = len(raw) > MAX_FILE_PREVIEW_BYTES
     raw = raw[:MAX_FILE_PREVIEW_BYTES]
     try:
@@ -298,7 +299,8 @@ def _is_text_previewable(path: Path, media_type: str) -> bool:
 
 def _looks_like_utf8_text(path: Path) -> bool:
     try:
-        sample = path.read_bytes()[:4096]
+        with path.open("rb") as file:
+            sample = file.read(4096)
     except OSError:
         return False
     if b"\x00" in sample:
