@@ -48,6 +48,7 @@ from .web_chat_modules.attachments import (
 )
 
 from .web_chat_modules.capabilities import (
+    active_provider_id as _active_provider_id_impl,
     available_model_ids as _available_model_ids_impl,
     default_model_id as _default_model_id_impl,
     default_reasoning_effort as _default_reasoning_effort_impl,
@@ -736,6 +737,10 @@ def _resolve_codex_access_token() -> str | None:
     return _resolve_codex_access_token_impl()
 
 
+def _active_provider_id() -> str:
+    return _active_provider_id_impl()
+
+
 def _available_model_ids() -> list[str]:
     return _available_model_ids_impl(resolve_access_token=_resolve_codex_access_token)
 
@@ -842,6 +847,7 @@ register_web_chat_routes(
         execute_web_chat_command=_execute_web_chat_command,
         persist_command_exchange=_persist_command_exchange,
         default_model_id=_default_model_id,
+        active_provider_id=_active_provider_id,
         model_capabilities=_model_capabilities,
         list_web_chat_profiles=_list_web_chat_profiles,
         switch_web_chat_profile=_switch_web_chat_profile,

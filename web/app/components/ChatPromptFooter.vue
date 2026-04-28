@@ -22,8 +22,15 @@ type SpeechWindow = Window & {
   webkitSpeechRecognition?: SpeechRecognitionConstructor
 }
 
+type ChatContextUsage = {
+  usedTokens: number
+  maxTokens: number
+  autoCompressTokens: number
+}
+
 type ChatPromptFooterProps = {
   submitStatus: 'ready' | 'submitted' | 'streaming' | 'error'
+  contextUsage?: ChatContextUsage | null
   workspaces?: WebChatWorkspace[]
   selectedWorkspace?: string | null
   workspaceInvalidSignal?: number
@@ -79,6 +86,24 @@ const selectedModelCapability = computed(() => props.models.find(model => model.
 const reasoningEfforts = computed(() => selectedModelCapability.value?.reasoningEfforts || [])
 const selectedWorkspaceItem = computed(() => props.workspaces.find(workspace => workspace.path === props.selectedWorkspace) || null)
 const controlsDisabled = computed(() => props.submitStatus === 'submitted' || props.submitStatus === 'streaming')
+const contextUsagePercent = computed(() => {
+  const usage = props.contextUsage
+  if (!usage || usage.maxTokens <= 0) return null
+  return Math.min(100, Math.max(0, Math.round((usage.usedTokens / usage.maxTokens) * 100)))
+})
+const contextUsageProgressStyle = computed(() => {
+  if (contextUsagePercent.value === null) return undefined
+  return { '--context-usage-progress': `${contextUsagePercent.value}%` }
+})
+const contextUsageLeft = computed(() => {
+  const usage = props.contextUsage
+  return usage ? Math.max(0, usage.maxTokens - usage.usedTokens) : 0
+})
+const contextAutoCompressPercent = computed(() => {
+  const usage = props.contextUsage
+  if (!usage || usage.maxTokens <= 0) return null
+  return Math.min(100, Math.max(0, Math.round((usage.autoCompressTokens / usage.maxTokens) * 100)))
+})
 
 const workspaceLabel = computed(() => selectedWorkspaceItem.value?.label || 'No workspace')
 const modelLabel = computed(() => selectedModelCapability.value?.label || props.selectedModel || 'Model')
@@ -86,6 +111,12 @@ const reasoningLabel = computed(() => props.selectedReasoningEffort || 'Reasonin
 const voiceIsListening = computed(() => voiceStatus.value === 'listening')
 const voiceTooltip = computed(() => voiceIsListening.value ? 'Stop voice input' : 'Dictate by voice')
 const voiceAriaLabel = computed(() => voiceIsListening.value ? 'Stop voice input' : 'Dictate by voice')
+
+function formatContextTokens(value: number) {
+  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`
+  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`
+  return String(Math.round(value))
+}
 
 watch(() => props.workspaceInvalidSignal, (signal) => {
   if (!signal) return
@@ -287,10 +318,45 @@ onBeforeUnmount(() => {
     </div>
   </div>
 
-  <UChatPromptSubmit :status="submitStatus" @stop="emit('stop')" />
+  <div class="flex shrink-0 items-center gap-1.5">
+    <UTooltip
+      v-if="contextUsage && contextUsagePercent !== null"
+      :content="{ side: 'top', sideOffset: 8, align: 'end' }"
+      :ui="{ content: 'h-auto max-w-none items-stretch rounded-md bg-elevated px-3 py-2 text-default shadow-lg ring ring-default' }"
+    >
+      <UButton
+        type="button"
+        aria-label="Context window usage"
+        color="neutral"
+        variant="ghost"
+        size="xs"
+        class="context-usage-ring size-8 cursor-default justify-center rounded-full p-[2px] text-[10px] leading-none tabular-nums"
+        :style="contextUsageProgressStyle"
+        tabindex="-1"
+      >
+        <span class="flex size-full items-center justify-center rounded-full bg-default text-muted">
+          {{ contextUsagePercent }}
+        </span>
+      </UButton>
+      <template #content>
+        <div class="min-w-52 space-y-1 text-xs">
+          <p class="font-medium text-highlighted">Context window</p>
+          <p>{{ contextUsagePercent }}% used ({{ formatContextTokens(contextUsageLeft) }} left)</p>
+          <p>{{ formatContextTokens(contextUsage.usedTokens) }} / {{ formatContextTokens(contextUsage.maxTokens) }} tokens used</p>
+          <p class="text-muted">Auto-compress at {{ formatContextTokens(contextUsage.autoCompressTokens) }}{{ contextAutoCompressPercent === null ? '' : ` (${contextAutoCompressPercent}%)` }}</p>
+        </div>
+      </template>
+    </UTooltip>
+
+    <UChatPromptSubmit :status="submitStatus" @stop="emit('stop')" />
+  </div>
 </template>
 
 <style scoped>
+.context-usage-ring {
+  background: conic-gradient(var(--ui-primary) var(--context-usage-progress), var(--ui-border) 0);
+}
+
 .workspace-invalid-shake {
   animation: workspace-invalid-shake 480ms ease-in-out;
 }

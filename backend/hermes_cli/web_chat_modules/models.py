@@ -110,6 +110,8 @@ class WebChatModelCapability(BaseModel):
     label: str
     reasoningEfforts: list[str]
     defaultReasoningEffort: str | None = None
+    contextWindowTokens: int | None = None
+    autoCompressTokens: int | None = None
 
 
 class WebChatCapabilitiesResponse(BaseModel):

@@ -61,6 +61,7 @@ class WebChatRouteServices:
     execute_web_chat_command: Callable[[ExecuteCommandRequest], ExecuteCommandResponse]
     persist_command_exchange: Callable[[ExecuteCommandRequest, ExecuteCommandResponse], ExecuteCommandResponse]
     default_model_id: Callable[[], str | None]
+    active_provider_id: Callable[[], str]
     model_capabilities: Callable[[], list[WebChatModelCapability]]
     list_web_chat_profiles: Callable[[], WebChatProfilesResponse]
     switch_web_chat_profile: Callable[[SwitchProfileRequest], SwitchProfileResponse]
@@ -108,7 +109,7 @@ def register_web_chat_routes(router: APIRouter, services: WebChatRouteServices) 
     @router.get("/capabilities", response_model=WebChatCapabilitiesResponse)
     def get_capabilities() -> WebChatCapabilitiesResponse:
         return WebChatCapabilitiesResponse(
-            provider="codex",
+            provider=services.active_provider_id(),
             defaultModel=services.default_model_id(),
             models=services.model_capabilities(),
         )

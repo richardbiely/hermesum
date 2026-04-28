@@ -113,6 +113,8 @@ export type WebChatModelCapability = {
   label: string
   reasoningEfforts: string[]
   defaultReasoningEffort: string | null
+  contextWindowTokens?: number | null
+  autoCompressTokens?: number | null
 }
 
 export type WebChatCapabilitiesResponse = {

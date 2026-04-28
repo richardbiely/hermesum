@@ -88,6 +88,16 @@ const error = computed(() => streamError.value)
 const latestGitChangePartKey = computed(() => latestChangePartKey(messages.value))
 const chatMessagesStatus = computed(() => chatStatus.value === 'submitted' ? 'streaming' : chatStatus.value)
 const showSubmittedIndicator = computed(() => chatStatus.value === 'submitted')
+const promptContextUsage = computed(() => {
+  const model = composer.models.value.find(model => model.id === composer.selectedModel.value)
+  if (!model?.contextWindowTokens || !model.autoCompressTokens) return null
+
+  return {
+    usedTokens: latestMeasuredContextTokens(),
+    maxTokens: model.contextWindowTokens,
+    autoCompressTokens: model.autoCompressTokens
+  }
+})
 const {
   selectSlashCommand,
   onPromptArrowDown,
@@ -182,6 +192,21 @@ const title = computed(() => {
   if (sessionError.value || !hasSession.value) return 'Chat unavailable'
   return data.value?.session.title || 'Chat'
 })
+
+function latestMeasuredContextTokens() {
+  for (let index = messages.value.length - 1; index >= 0; index -= 1) {
+    const message = messages.value[index]
+    if (message?.role !== 'assistant') continue
+
+    const measured = [message.inputTokens, message.outputTokens]
+      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0)
+      .reduce((total, value) => total + value, 0)
+
+    if (measured > 0) return measured
+  }
+
+  return 0
+}
 
 function pathBaseName(path?: string | null) {
   if (!path) return null
@@ -828,6 +853,7 @@ onBeforeUnmount(() => {
             <template #footer>
               <ChatPromptFooter
                 :submit-status="chatStatus"
+                :context-usage="promptContextUsage"
                 :workspaces="context.workspaces.value"
                 :selected-workspace="context.selectedWorkspace.value"
                 :workspace-invalid-signal="workspaceInvalidSignal"

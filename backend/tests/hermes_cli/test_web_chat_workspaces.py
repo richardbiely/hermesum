@@ -10,14 +10,18 @@ from types import SimpleNamespace
 
 def test_returns_chat_capabilities(client, monkeypatch):
     import hermes_cli.web_chat as web_chat
+    from hermes_cli.web_chat_modules import capabilities
 
-    monkeypatch.setattr(web_chat, "_available_model_ids", lambda: ["gpt-5.4", "gpt-5.3-codex"])
+    monkeypatch.setattr(web_chat, "_active_provider_id", lambda: "test-provider")
+    monkeypatch.setattr(web_chat, "_available_model_ids", lambda: ["gpt-5.4", "claude-sonnet-4-6"])
+    monkeypatch.setattr(capabilities, "model_context_window_tokens", lambda model_id: 300000 if model_id == "gpt-5.4" else 200000)
+    monkeypatch.setattr(capabilities, "_compression_threshold", lambda: 0.4)
 
     response = client.get("/api/web-chat/capabilities")
 
     assert response.status_code == 200
     data = response.json()
-    assert data["provider"] == "codex"
+    assert data["provider"] == "test-provider"
     assert data["defaultModel"] == "gpt-5.4"
     assert data["models"] == [
         {
@@ -25,12 +29,16 @@ def test_returns_chat_capabilities(client, monkeypatch):
             "label": "gpt-5.4",
             "reasoningEfforts": ["none", "low", "medium", "high", "xhigh"],
             "defaultReasoningEffort": "none",
+            "contextWindowTokens": 300000,
+            "autoCompressTokens": 120000,
         },
         {
-            "id": "gpt-5.3-codex",
-            "label": "gpt-5.3-codex",
-            "reasoningEfforts": ["low", "medium", "high", "xhigh"],
+            "id": "claude-sonnet-4-6",
+            "label": "claude-sonnet-4-6",
+            "reasoningEfforts": ["low", "medium", "high"],
             "defaultReasoningEffort": "medium",
+            "contextWindowTokens": 200000,
+            "autoCompressTokens": 80000,
         },
     ]
 
