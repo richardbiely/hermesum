@@ -4,14 +4,16 @@ from __future__ import annotations
 
 import os
 import subprocess
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
 from fastapi import HTTPException, status
 
-from .models import WebChatUpdateStatusResponse
+from .models import WebChatAppUpdateStatusResponse, WebChatUpdateStatusResponse
 
 RUNTIME_SOURCE_MARKER = ".hermesum-runtime-source"
+APP_RESTART_EXIT_CODE = 42
 
 
 @dataclass(frozen=True)
@@ -148,3 +150,73 @@ def perform_update() -> WebChatUpdateStatusResponse:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
 
     return update_status()
+
+
+def app_update_status() -> WebChatAppUpdateStatusResponse:
+    root = project_root()
+
+    try:
+        current_head = _git_head(root)
+        branch = _git_branch(root)
+        remote_head = _remote_head(root, branch)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"Could not check app update status: {exc}",
+        ) from exc
+
+    if not current_head:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=f"App checkout is not a git repository: {root}",
+        )
+
+    return WebChatAppUpdateStatusResponse(
+        updateAvailable=bool(remote_head and remote_head != current_head),
+        appPath=str(root),
+        branch=branch,
+        currentRevision=_short(current_head),
+        remoteRevision=_short(remote_head),
+    )
+
+
+def perform_app_update() -> WebChatAppUpdateStatusResponse:
+    root = project_root()
+
+    try:
+        _run_git(root, ["pull", "--ff-only", "--autostash"], timeout=180)
+        _run_app_command(root, ["pnpm", "install", "--frozen-lockfile"], timeout=300)
+        _run_app_command(root, ["pnpm", "build"], timeout=300)
+    except Exception as exc:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(exc)) from exc
+
+    response = app_update_status()
+    _schedule_app_restart()
+    return response
+
+
+def _run_app_command(root: Path, args: list[str], *, timeout: int) -> CommandResult:
+    completed = subprocess.run(
+        args,
+        text=True,
+        capture_output=True,
+        timeout=timeout,
+        check=False,
+        cwd=str(root / "web"),
+    )
+    if completed.returncode != 0:
+        message = (completed.stderr or completed.stdout or f"{' '.join(args)} failed").strip()
+        raise RuntimeError(message)
+    return CommandResult(stdout=completed.stdout.strip(), stderr=completed.stderr.strip())
+
+
+def _schedule_app_restart() -> None:
+    if os.environ.get("HERMESUM_ENABLE_SELF_RESTART") != "1":
+        return
+
+    def restart() -> None:
+        os._exit(APP_RESTART_EXIT_CODE)
+
+    timer = threading.Timer(1.0, restart)
+    timer.daemon = True
+    timer.start()

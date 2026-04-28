@@ -1,6 +1,16 @@
 <script setup lang="ts">
 import type { Ref } from 'vue'
 
+type UpdateControl = {
+  visible: Ref<boolean>
+  pending: Ref<boolean>
+  completed: Ref<boolean>
+  label: Ref<string>
+  color: Ref<'primary' | 'success'>
+  title: Ref<string>
+  update: () => void
+}
+
 const props = defineProps<{
   title: string
   workspaceStatus?: {
@@ -15,25 +25,28 @@ const props = defineProps<{
   updateTitle?: string
 }>()
 
-const updateControl = inject<{
-  visible: Ref<boolean>
-  pending: Ref<boolean>
-  completed: Ref<boolean>
-  label: Ref<string>
-  color: Ref<'primary' | 'success'>
-  title: Ref<string>
-  update: () => void
-} | null>('hermesUpdateControl', null)
+const updateControl = inject<UpdateControl | null>('hermesUpdateControl', null)
+const appUpdateControl = inject<UpdateControl | null>('appUpdateControl', null)
 
 const resolvedUpdateVisible = computed(() => props.updateVisible ?? updateControl?.visible.value ?? false)
 const resolvedUpdatePending = computed(() => props.updatePending ?? updateControl?.pending.value ?? false)
 const resolvedUpdateCompleted = computed(() => props.updateCompleted ?? updateControl?.completed.value ?? false)
-const resolvedUpdateLabel = computed(() => props.updateLabel || updateControl?.label.value || 'Update')
+const resolvedUpdateLabel = computed(() => props.updateLabel || updateControl?.label.value || 'Update Hermes')
 const resolvedUpdateColor = computed(() => props.updateColor || updateControl?.color.value || 'primary')
-const resolvedUpdateTitle = computed(() => props.updateTitle || updateControl?.title.value || 'Update Hermes')
+const resolvedUpdateTitle = computed(() => props.updateTitle || updateControl?.title.value || 'Update Hermes Agent')
+const resolvedAppUpdateVisible = computed(() => appUpdateControl?.visible.value ?? false)
+const resolvedAppUpdatePending = computed(() => appUpdateControl?.pending.value ?? false)
+const resolvedAppUpdateCompleted = computed(() => appUpdateControl?.completed.value ?? false)
+const resolvedAppUpdateLabel = computed(() => appUpdateControl?.label.value || 'Update app')
+const resolvedAppUpdateColor = computed(() => appUpdateControl?.color.value || 'primary')
+const resolvedAppUpdateTitle = computed(() => appUpdateControl?.title.value || 'Update Hermesum app')
 
 function submitUpdate() {
   updateControl?.update()
+}
+
+function submitAppUpdate() {
+  appUpdateControl?.update()
 }
 </script>
 
@@ -59,6 +72,18 @@ function submitUpdate() {
         :disabled="resolvedUpdatePending || resolvedUpdateCompleted"
         :title="resolvedUpdateTitle"
         @click="submitUpdate"
+      />
+      <UButton
+        v-if="resolvedAppUpdateVisible"
+        size="sm"
+        variant="solid"
+        icon="i-lucide-download"
+        :label="resolvedAppUpdateLabel"
+        :color="resolvedAppUpdateColor"
+        :loading="resolvedAppUpdatePending"
+        :disabled="resolvedAppUpdatePending || resolvedAppUpdateCompleted"
+        :title="resolvedAppUpdateTitle"
+        @click="submitAppUpdate"
       />
       <UTooltip text="Toggle dark mode">
         <UColorModeSwitch color="neutral" size="sm" />

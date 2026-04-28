@@ -2,7 +2,7 @@
 import { installNotificationSoundUnlock } from '~/utils/notificationSound'
 import { readMessageCountForVisibleSession, syncInitialReadMessageCounts } from '~/utils/chatReadReceipts'
 import type { SessionGroup } from '~/utils/sessionGroups'
-import type { WebChatProfile, WebChatSession, WebChatUpdateStatusResponse, WebChatWorkspace } from '~/types/web-chat'
+import type { WebChatAppUpdateStatusResponse, WebChatProfile, WebChatSession, WebChatUpdateStatusResponse, WebChatWorkspace } from '~/types/web-chat'
 import { buildSessionGroups } from '~/utils/sessionGroups'
 
 const api = useHermesApi()
@@ -46,8 +46,12 @@ const workspaceDirectorySuggestions = ref<string[]>([])
 const updateStatus = ref<WebChatUpdateStatusResponse | null>(null)
 const updatePending = ref(false)
 const updateCompleted = ref(false)
+const appUpdateStatus = ref<WebChatAppUpdateStatusResponse | null>(null)
+const appUpdatePending = ref(false)
+const appUpdateCompleted = ref(false)
 let workspaceDirectorySuggestionTimer: ReturnType<typeof setTimeout> | undefined
 let hideUpdateTimer: ReturnType<typeof setTimeout> | undefined
+let hideAppUpdateTimer: ReturnType<typeof setTimeout> | undefined
 let updateStatusTimer: ReturnType<typeof setInterval> | undefined
 let updateStatusCheckPending = false
 let lastUpdateStatusCheckAt = 0
@@ -81,13 +85,18 @@ const canRename = computed(() => {
 const canSaveWorkspace = computed(() => Boolean(workspaceLabel.value.trim() && workspacePath.value.trim()))
 const updateNeeded = computed(() => Boolean(updateStatus.value?.updateAvailable || updateStatus.value?.runtimeOutOfSync))
 const showUpdateButton = computed(() => updatePending.value || updateCompleted.value || updateNeeded.value)
-const updateButtonLabel = computed(() => updateCompleted.value ? 'Updated' : 'Update')
+const updateButtonLabel = computed(() => updateCompleted.value ? 'Hermes updated' : 'Update Hermes')
 const updateButtonColor = computed(() => updateCompleted.value ? 'success' : 'primary')
 const updateButtonTitle = computed(() => {
-  if (updateStatus.value?.updateAvailable && updateStatus.value?.runtimeOutOfSync) return 'Update Hermes and sync runtime'
-  if (updateStatus.value?.runtimeOutOfSync) return 'Sync runtime'
-  return 'Update Hermes'
+  if (updateStatus.value?.updateAvailable && updateStatus.value?.runtimeOutOfSync) return 'Update Hermes Agent and sync runtime'
+  if (updateStatus.value?.runtimeOutOfSync) return 'Sync Hermes runtime'
+  return 'Update Hermes Agent'
 })
+const appUpdateNeeded = computed(() => Boolean(appUpdateStatus.value?.updateAvailable))
+const showAppUpdateButton = computed(() => appUpdatePending.value || appUpdateCompleted.value || appUpdateNeeded.value)
+const appUpdateButtonLabel = computed(() => appUpdateCompleted.value ? 'App updated' : 'Update app')
+const appUpdateButtonColor = computed(() => appUpdateCompleted.value ? 'success' : 'primary')
+const appUpdateButtonTitle = computed(() => 'Update Hermesum app from origin')
 
 const confirmTitle = computed(() => {
   if (!confirmAction.value || !confirmSession.value) return ''
@@ -175,14 +184,17 @@ async function refreshWorkspacesAndSessions() {
 }
 
 async function loadUpdateStatus() {
-  if (updateStatusCheckPending || updatePending.value) return
+  if (updateStatusCheckPending || updatePending.value || appUpdatePending.value) return
 
   updateStatusCheckPending = true
   lastUpdateStatusCheckAt = Date.now()
   try {
-    updateStatus.value = await api.getUpdateStatus()
-  } catch {
-    updateStatus.value = null
+    const [hermesResult, appResult] = await Promise.allSettled([
+      api.getUpdateStatus(),
+      api.getAppUpdateStatus()
+    ])
+    updateStatus.value = hermesResult.status === 'fulfilled' ? hermesResult.value : null
+    appUpdateStatus.value = appResult.status === 'fulfilled' ? appResult.value : null
   } finally {
     updateStatusCheckPending = false
   }
@@ -219,6 +231,29 @@ async function updateHermes() {
     })
   } finally {
     updatePending.value = false
+  }
+}
+
+async function updateApp() {
+  if (appUpdatePending.value) return
+  if (hideAppUpdateTimer) clearTimeout(hideAppUpdateTimer)
+
+  appUpdatePending.value = true
+  appUpdateCompleted.value = false
+  try {
+    appUpdateStatus.value = await api.updateApp()
+    appUpdateCompleted.value = true
+    hideAppUpdateTimer = setTimeout(() => {
+      appUpdateCompleted.value = false
+    }, 3000)
+  } catch (err) {
+    toast.add({
+      title: 'App update failed',
+      description: getHermesErrorMessage(err, 'Could not update the app.'),
+      color: 'error'
+    })
+  } finally {
+    appUpdatePending.value = false
   }
 }
 
@@ -516,6 +551,7 @@ onBeforeUnmount(() => {
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   if (workspaceDirectorySuggestionTimer) clearTimeout(workspaceDirectorySuggestionTimer)
   if (hideUpdateTimer) clearTimeout(hideUpdateTimer)
+  if (hideAppUpdateTimer) clearTimeout(hideAppUpdateTimer)
   unsubscribeRunFinished?.()
 })
 
@@ -529,6 +565,15 @@ provide('hermesUpdateControl', {
   color: updateButtonColor,
   title: updateButtonTitle,
   update: updateHermes
+})
+provide('appUpdateControl', {
+  visible: showAppUpdateButton,
+  pending: appUpdatePending,
+  completed: appUpdateCompleted,
+  label: appUpdateButtonLabel,
+  color: appUpdateButtonColor,
+  title: appUpdateButtonTitle,
+  update: updateApp
 })
 </script>
 

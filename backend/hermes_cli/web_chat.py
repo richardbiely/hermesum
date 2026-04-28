@@ -107,6 +107,7 @@ from .web_chat_modules.models import (
     SwitchProfileRequest,
     SwitchProfileResponse,
     WebChatAttachment,
+    WebChatAppUpdateStatusResponse,
     WebChatCommand,
     WebChatFileChange,
     WebChatIsolatedWorkspace,
@@ -132,6 +133,8 @@ from .web_chat_modules.profiles import (
 from .web_chat_modules.run_manager import RunContext, RunManager as _RunManager, RunManagerServices
 from .web_chat_modules.routes import WebChatRouteServices, register_web_chat_routes
 from .web_chat_modules.updates import (
+    app_update_status as _app_update_status_impl,
+    perform_app_update as _perform_app_update_impl,
     perform_update as _perform_update_impl,
     update_status as _update_status_impl,
 )
@@ -794,6 +797,14 @@ def _perform_update() -> WebChatUpdateStatusResponse:
     return _perform_update_impl()
 
 
+def _app_update_status() -> WebChatAppUpdateStatusResponse:
+    return _app_update_status_impl()
+
+
+def _perform_app_update() -> WebChatAppUpdateStatusResponse:
+    return _perform_app_update_impl()
+
+
 def _resolve_requested_model(model_id: str | None, *, session: dict[str, Any] | None = None) -> str | None:
     return _resolve_requested_model_impl(model_id, session=session, default_model=_default_model_id)
 
@@ -883,5 +894,7 @@ register_web_chat_routes(
         isolated_worktree_for_session=_isolated_worktree_for_session,
         update_status=_update_status,
         perform_update=_perform_update,
+        app_update_status=_app_update_status,
+        perform_app_update=_perform_app_update,
     ),
 )

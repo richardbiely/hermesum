@@ -311,7 +311,7 @@ start_dashboard() {
   mkdir -p "$WEB/.output/public/assets"
   (
     cd "$RUNTIME"
-    local env_args=("HERMES_WEB_DIST=$WEB/.output/public")
+    local env_args=("HERMES_WEB_DIST=$WEB/.output/public" "HERMESUM_ENABLE_SELF_RESTART=1")
     if [[ "$DEV" == "1" ]]; then
       env_args+=("HERMES_DEV_WEB_ORIGIN=http://127.0.0.1:$WEB_DEV_PORT")
     fi
@@ -482,7 +482,19 @@ run_once() {
   if wait_for_port "$PORT" "Hermes dashboard"; then
     open_browser_once "http://127.0.0.1:$PORT"
   fi
-  wait "$CHILD_PID"
+  while true; do
+    wait "$CHILD_PID"
+    local exit_code=$?
+    if [[ "$exit_code" != "42" ]]; then
+      return "$exit_code"
+    fi
+    echo "App update completed; restarting Hermes dashboard..."
+    kill_existing_port_processes "$PORT"
+    prepare_runtime
+    ensure_web_build
+    start_dashboard
+    wait_for_port "$PORT" "Hermes dashboard" || true
+  done
 }
 
 run_watch() {

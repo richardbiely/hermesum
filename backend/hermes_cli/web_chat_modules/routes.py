@@ -32,6 +32,7 @@ from .models import (
     SwitchProfileRequest,
     SwitchProfileResponse,
     UploadAttachmentsResponse,
+    WebChatAppUpdateStatusResponse,
     WebChatAttachment,
     WebChatCapabilitiesResponse,
     WebChatCommand,
@@ -85,6 +86,8 @@ class WebChatRouteServices:
     isolated_worktree_for_session: Callable[[SessionDB, str], Any | None]
     update_status: Callable[[], WebChatUpdateStatusResponse]
     perform_update: Callable[[], WebChatUpdateStatusResponse]
+    app_update_status: Callable[[], WebChatAppUpdateStatusResponse]
+    perform_app_update: Callable[[], WebChatAppUpdateStatusResponse]
 
 
 def register_web_chat_routes(router: APIRouter, services: WebChatRouteServices) -> None:
@@ -124,6 +127,14 @@ def register_web_chat_routes(router: APIRouter, services: WebChatRouteServices) 
     @router.post("/update", response_model=WebChatUpdateStatusResponse)
     def update_hermes() -> WebChatUpdateStatusResponse:
         return services.perform_update()
+
+    @router.get("/app-update", response_model=WebChatAppUpdateStatusResponse)
+    def get_app_update_status() -> WebChatAppUpdateStatusResponse:
+        return services.app_update_status()
+
+    @router.post("/app-update", response_model=WebChatAppUpdateStatusResponse)
+    def update_app() -> WebChatAppUpdateStatusResponse:
+        return services.perform_app_update()
 
     @router.get("/profiles", response_model=WebChatProfilesResponse)
     def get_profiles() -> WebChatProfilesResponse:

@@ -131,6 +131,14 @@ class WebChatUpdateStatusResponse(BaseModel):
     runtimeRevision: str | None = None
 
 
+class WebChatAppUpdateStatusResponse(BaseModel):
+    updateAvailable: bool
+    appPath: str
+    branch: str
+    currentRevision: str | None = None
+    remoteRevision: str | None = None
+
+
 class WebChatCommand(BaseModel):
     id: str
     name: str

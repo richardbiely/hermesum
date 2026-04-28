@@ -134,6 +134,14 @@ export type WebChatUpdateStatusResponse = {
   runtimeRevision?: string | null
 }
 
+export type WebChatAppUpdateStatusResponse = {
+  updateAvailable: boolean
+  appPath: string
+  branch: string
+  currentRevision?: string | null
+  remoteRevision?: string | null
+}
+
 export type WebChatCommand = {
   id: string
   name: string
