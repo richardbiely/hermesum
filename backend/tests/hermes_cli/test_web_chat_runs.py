@@ -297,6 +297,7 @@ def test_start_run_reports_later_edits_when_git_status_is_already_dirty(client, 
     def first_executor(context, emit):
         workspace = Path(context.workspace)
         (workspace / "tracked.txt").write_text("one\ntwo\n", encoding="utf-8")
+        (workspace / "other.txt").write_text("other\n", encoding="utf-8")
         return "First done"
 
     monkeypatch.setattr(web_chat, "run_manager", web_chat.RunManager(first_executor))
@@ -322,6 +323,7 @@ def test_start_run_reports_later_edits_when_git_status_is_already_dirty(client, 
     assert "event: message.completed" in body
     assert '"changes"' in body
     assert "tracked.txt" in body
+    assert "other.txt" not in body
     assert "+three" in body
 
     detail = client.get(f"/api/web-chat/sessions/{first.json()['sessionId']}?includeWorkspaceChanges=true")
@@ -330,9 +332,10 @@ def test_start_run_reports_later_edits_when_git_status_is_already_dirty(client, 
     second_changes = messages[3]["parts"][1]["changes"]
     assert second_changes["runId"] == second.json()["runId"]
     assert second_changes["files"] == [
-        {"path": "tracked.txt", "status": "edited", "additions": 2, "deletions": 0},
+        {"path": "tracked.txt", "status": "edited", "additions": 1, "deletions": 0},
     ]
     assert "+three" in second_changes["patch"]["files"][0]["patch"]
+    assert "+two" not in second_changes["patch"]["files"][0]["patch"]
 
 
 def test_start_run_is_idempotent_for_retried_client_message_id(client, monkeypatch, tmp_path):

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import difflib
 import os
 import subprocess
 from hashlib import sha256
@@ -97,6 +98,87 @@ def workspace_change_fingerprint(
     return digest.hexdigest()
 
 
+def workspace_file_snapshot(
+    workspace: str | None,
+    *,
+    workspace_root_func: Callable[[str | None], Path | None] = workspace_root,
+) -> dict[str, dict[str, Any]] | None:
+    root = workspace_root_func(workspace)
+    if not root:
+        return None
+
+    status = git_status_porcelain(str(root), workspace_root_func=workspace_root_func)
+    if status is None:
+        return None
+
+    snapshot: dict[str, dict[str, Any]] = {}
+    for path in status_paths(status):
+        content = _workspace_file_content(root, path)
+        snapshot[path] = {"content": content}
+    return snapshot
+
+
+def workspace_changes_between_snapshot(
+    workspace: str,
+    baseline_snapshot: dict[str, dict[str, Any]] | None,
+    run_id: str | None,
+    *,
+    workspace_root_func: Callable[[str | None], Path | None] = workspace_root,
+    max_patch_bytes_per_file: int,
+    max_patch_bytes_per_run: int,
+) -> WebChatWorkspaceChanges:
+    root = workspace_root_func(workspace)
+    if not root:
+        return WebChatWorkspaceChanges(files=[], totalFiles=0, totalAdditions=0, totalDeletions=0)
+
+    baseline_snapshot = baseline_snapshot or {}
+    final_status = git_status_porcelain(str(root), workspace_root_func=workspace_root_func) or ""
+    candidates = sorted(set(baseline_snapshot) | status_paths(final_status))
+    files: list[WebChatFileChange] = []
+    patch_files: list[dict[str, Any]] = []
+    patch_truncated = False
+    total_patch_bytes = 0
+
+    for path in candidates:
+        before = baseline_snapshot.get(path)
+        before_content = before.get("content") if before else _git_head_file(root, path)
+        after_content = _workspace_file_content(root, path)
+        if before_content == after_content:
+            continue
+
+        status_value = "edited"
+        if before_content is None and after_content is not None:
+            status_value = "created"
+        elif before_content is not None and after_content is None:
+            status_value = "deleted"
+
+        patch_text, additions, deletions = _snapshot_file_patch(path, before_content, after_content)
+        truncated = False
+        if patch_text is not None:
+            encoded = patch_text.encode("utf-8", errors="ignore")
+            if len(encoded) > max_patch_bytes_per_file:
+                patch_text = encoded[:max_patch_bytes_per_file].decode("utf-8", errors="ignore")
+                truncated = True
+            total_patch_bytes += len(patch_text.encode("utf-8", errors="ignore"))
+            if total_patch_bytes > max_patch_bytes_per_run:
+                patch_text = None
+                truncated = True
+        patch_truncated = patch_truncated or truncated
+        files.append(WebChatFileChange(path=path, status=status_value, additions=additions, deletions=deletions))
+        patch_files.append({"path": path, "status": status_value, "patch": patch_text, "truncated": truncated})
+
+    return WebChatWorkspaceChanges(
+        files=files,
+        totalFiles=len(files),
+        totalAdditions=sum(file.additions for file in files),
+        totalDeletions=sum(file.deletions for file in files),
+        workspace=str(root),
+        runId=run_id,
+        patch={"files": patch_files} if patch_files else None,
+        patchTruncated=patch_truncated,
+    )
+
+
 def status_paths(status_text: str) -> set[str]:
     paths: set[str] = set()
     for line in status_text.splitlines():
@@ -108,6 +190,47 @@ def status_paths(status_text: str) -> set[str]:
         if value:
             paths.add(value)
     return paths
+
+
+def _workspace_file_content(root: Path, path: str) -> bytes | None:
+    file_path = root / path
+    try:
+        return file_path.read_bytes() if file_path.exists() and file_path.is_file() else None
+    except Exception:
+        return None
+
+
+def _git_head_file(root: Path, path: str) -> bytes | None:
+    try:
+        result = subprocess.run(
+            ["git", "-C", str(root), "show", f"HEAD:{path}"],
+            capture_output=True,
+            timeout=10,
+        )
+    except Exception:
+        return None
+    return result.stdout if result.returncode == 0 else None
+
+
+def _snapshot_file_patch(path: str, before: bytes | None, after: bytes | None) -> tuple[str | None, int, int]:
+    if _is_binary(before) or _is_binary(after):
+        return None, 0, 0
+
+    before_text = (before or b"").decode("utf-8", errors="ignore")
+    after_text = (after or b"").decode("utf-8", errors="ignore")
+    before_lines = before_text.splitlines(keepends=True)
+    after_lines = after_text.splitlines(keepends=True)
+    fromfile = "/dev/null" if before is None else f"a/{path}"
+    tofile = "/dev/null" if after is None else f"b/{path}"
+    diff_lines = list(difflib.unified_diff(before_lines, after_lines, fromfile=fromfile, tofile=tofile))
+    patch_text = f"diff --git a/{path} b/{path}\n" + "".join(diff_lines)
+    additions = sum(1 for line in diff_lines if line.startswith("+") and not line.startswith("+++"))
+    deletions = sum(1 for line in diff_lines if line.startswith("-") and not line.startswith("---"))
+    return patch_text, additions, deletions
+
+
+def _is_binary(content: bytes | None) -> bool:
+    return bool(content and b"\0" in content)
 
 
 def workspace_changes_since(

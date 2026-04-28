@@ -74,7 +74,9 @@ from .web_chat_modules.git_changes import (
     untracked_file_patch as _untracked_file_patch_impl,
     workspace_change_fingerprint as _workspace_change_fingerprint_impl,
     workspace_changes as _workspace_changes_impl,
+    workspace_changes_between_snapshot as _workspace_changes_between_snapshot_impl,
     workspace_changes_since as _workspace_changes_since_impl,
+    workspace_file_snapshot as _workspace_file_snapshot_impl,
     workspace_patch as _workspace_patch_impl,
     workspace_root as _workspace_root_impl,
 )
@@ -379,18 +381,15 @@ def _persist_run_workspace_changes(context: RunContext, message_id: int | None) 
     if final_status is None:
         return None
 
-    changes = _workspace_changes(execution_workspace)
-    changes.files = sorted(changes.files, key=lambda file: file.path)
-    changes.totalFiles = len(changes.files)
-    changes.totalAdditions = sum(file.additions for file in changes.files)
-    changes.totalDeletions = sum(file.deletions for file in changes.files)
+    changes = _workspace_changes_between_snapshot(
+        execution_workspace,
+        context.baseline_workspace_snapshot,
+        context.run_id,
+    )
     changes.workspace = str(_workspace_root(display_workspace) or display_workspace)
     changes.runId = context.run_id
     if not changes.files:
         return None
-    patch, patch_truncated = _workspace_patch(Path(_workspace_root(execution_workspace) or execution_workspace), changes.files)
-    changes.patch = patch
-    changes.patchTruncated = patch_truncated
     _record_session_git_changes(
         _db(),
         session_id=context.session_id,
@@ -410,6 +409,25 @@ def _git_status_porcelain(workspace: str | None) -> str | None:
 
 def _workspace_change_fingerprint(workspace: str | None) -> str | None:
     return _workspace_change_fingerprint_impl(workspace, workspace_root_func=_workspace_root)
+
+
+def _workspace_file_snapshot(workspace: str | None) -> dict[str, dict[str, Any]] | None:
+    return _workspace_file_snapshot_impl(workspace, workspace_root_func=_workspace_root)
+
+
+def _workspace_changes_between_snapshot(
+    workspace: str,
+    baseline_snapshot: dict[str, dict[str, Any]] | None,
+    run_id: str | None,
+) -> WebChatWorkspaceChanges:
+    return _workspace_changes_between_snapshot_impl(
+        workspace,
+        baseline_snapshot,
+        run_id,
+        workspace_root_func=_workspace_root,
+        max_patch_bytes_per_file=MAX_PATCH_BYTES_PER_FILE,
+        max_patch_bytes_per_run=MAX_PATCH_BYTES_PER_RUN,
+    )
 
 
 def _status_paths(status_text: str) -> set[str]:
@@ -796,6 +814,7 @@ def _run_manager_services() -> RunManagerServices:
         title_from_message=_title_from_message,
         git_status_porcelain=_git_status_porcelain,
         workspace_change_fingerprint=_workspace_change_fingerprint,
+        workspace_file_snapshot=_workspace_file_snapshot,
         ensure_session_worktree=_ensure_session_worktree,
         persist_run_workspace_changes=_persist_run_workspace_changes,
         agent_executor=_agent_executor,
