@@ -27,10 +27,12 @@ const emit = defineEmits<{
 
 const OTHER_CHATS_GROUP_ID = '__other__'
 const COLLAPSED_GROUPS_STORAGE_KEY = 'hermes-chat-collapsed-session-groups'
+const MAX_COLLAPSED_SESSION_COUNT = 10
 
 const openMenuSessionId = ref<string | null>(null)
 const contextMenuReference = shallowRef<{ getBoundingClientRect: () => DOMRect } | null>(null)
 const collapsedGroupIds = ref(new Set<string>([OTHER_CHATS_GROUP_ID]))
+const expandedSessionGroupIds = ref(new Set<string>())
 
 function sessionTitle(session: WebChatSession) {
   return session.title || session.preview || 'Untitled chat'
@@ -59,11 +61,38 @@ function isUnreadSession(session: WebChatSession) {
   )
 }
 
-function visibleSessions(group: SessionGroup) {
+function sortedSessions(group: SessionGroup) {
   return [...group.sessions].sort((a, b) => {
     return Number(b.pinned) - Number(a.pinned)
       || Number(isUnreadSession(b)) - Number(isUnreadSession(a))
   })
+}
+
+function isSessionGroupExpanded(group: SessionGroup) {
+  return expandedSessionGroupIds.value.has(group.id)
+}
+
+function displayedSessions(group: SessionGroup) {
+  const sessions = sortedSessions(group)
+
+  return isSessionGroupExpanded(group)
+    ? sessions
+    : sessions.slice(0, MAX_COLLAPSED_SESSION_COUNT)
+}
+
+function hiddenSessionCount(group: SessionGroup) {
+  if (isSessionGroupExpanded(group)) return 0
+  return Math.max(0, group.sessions.length - MAX_COLLAPSED_SESSION_COUNT)
+}
+
+function toggleSessionGroupExpanded(group: SessionGroup) {
+  const nextExpandedGroupIds = new Set(expandedSessionGroupIds.value)
+  if (nextExpandedGroupIds.has(group.id)) {
+    nextExpandedGroupIds.delete(group.id)
+  } else {
+    nextExpandedGroupIds.add(group.id)
+  }
+  expandedSessionGroupIds.value = nextExpandedGroupIds
 }
 
 function isGroupCollapsed(group: SessionGroup) {
@@ -117,15 +146,33 @@ function expandActiveSessionGroup(activeSessionId = props.activeSessionId) {
   collapsedGroupIds.value = nextCollapsedGroupIds
 }
 
+function revealActiveSession(activeSessionId = props.activeSessionId) {
+  if (!activeSessionId) return
+
+  const activeGroup = props.groups.find(group => group.sessions.some(session => session.id === activeSessionId))
+  if (!activeGroup || expandedSessionGroupIds.value.has(activeGroup.id)) return
+
+  const activeIndex = sortedSessions(activeGroup).findIndex(session => session.id === activeSessionId)
+  if (activeIndex < MAX_COLLAPSED_SESSION_COUNT) return
+
+  const nextExpandedGroupIds = new Set(expandedSessionGroupIds.value)
+  nextExpandedGroupIds.add(activeGroup.id)
+  expandedSessionGroupIds.value = nextExpandedGroupIds
+}
+
 watch(
   () => [props.activeSessionId, props.groups] as const,
-  ([activeSessionId]) => expandActiveSessionGroup(activeSessionId),
+  ([activeSessionId]) => {
+    expandActiveSessionGroup(activeSessionId)
+    revealActiveSession(activeSessionId)
+  },
   { immediate: true }
 )
 
 onMounted(() => {
   collapsedGroupIds.value = readCollapsedGroupIds()
   expandActiveSessionGroup()
+  revealActiveSession()
 })
 
 function openSessionMenu(session: WebChatSession) {
@@ -261,7 +308,7 @@ function sessionActionItems(session: WebChatSession): DropdownMenuItem[] {
 
       <div v-if="group.sessions.length && !isGroupCollapsed(group)" class="space-y-1">
         <div
-          v-for="session in visibleSessions(group)"
+          v-for="session in displayedSessions(group)"
           :key="session.id"
           role="button"
           tabindex="0"
@@ -332,6 +379,18 @@ function sessionActionItems(session: WebChatSession): DropdownMenuItem[] {
             </span>
           </div>
         </div>
+
+        <UButton
+          v-if="group.sessions.length > MAX_COLLAPSED_SESSION_COUNT"
+          :label="isSessionGroupExpanded(group) ? 'Show less' : `Show ${hiddenSessionCount(group)} more`"
+          :aria-expanded="isSessionGroupExpanded(group)"
+          color="neutral"
+          variant="ghost"
+          size="xs"
+          class="ml-4 h-7 px-1.5 text-xs text-muted hover:text-default"
+          :trailing-icon="isSessionGroupExpanded(group) ? 'i-lucide-chevron-up' : 'i-lucide-chevron-down'"
+          @click="toggleSessionGroupExpanded(group)"
+        />
       </div>
 
       <p v-else-if="!isGroupCollapsed(group)" class="px-1.5 text-xs text-muted">
