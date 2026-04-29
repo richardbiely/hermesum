@@ -35,13 +35,14 @@ function hermesToken() {
 }
 
 type SessionDetailOptions = {
+  includeWorkspaceChanges?: boolean
   messageLimit?: number
   messageBefore?: string
 }
 
 function sessionDetailQuery(options: SessionDetailOptions = {}) {
   return {
-    includeWorkspaceChanges: true,
+    includeWorkspaceChanges: options.includeWorkspaceChanges ?? true,
     messageLimit: options.messageLimit,
     messageBefore: options.messageBefore
   }

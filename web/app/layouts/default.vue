@@ -3,7 +3,7 @@ import type { CommandPaletteGroup } from '@nuxt/ui'
 import { installNotificationSoundUnlock } from '~/utils/notificationSound'
 import { readMessageCountForVisibleSession, syncInitialReadMessageCounts } from '~/utils/chatReadReceipts'
 import type { SessionGroup } from '~/utils/sessionGroups'
-import type { WebChatAppUpdateStatusResponse, WebChatProfile, WebChatSession, WebChatUpdateStatusResponse, WebChatWorkspace } from '~/types/web-chat'
+import type { WebChatAppUpdateStatusResponse, WebChatMessage, WebChatProfile, WebChatSession, WebChatUpdateStatusResponse, WebChatWorkspace } from '~/types/web-chat'
 import { buildSessionGroups } from '~/utils/sessionGroups'
 
 const api = useHermesApi()
@@ -25,17 +25,23 @@ const groupedSessions = computed<SessionGroup[]>(() => buildSessionGroups({
   workspaces: context.workspaces.value,
   selectedWorkspace: context.selectedWorkspace.value
 }))
+const searchTerm = ref('')
+const searchMessageTextBySessionId = ref<Record<string, string>>({})
+const searchIndexedSessionIds = ref(new Set<string>())
 const searchGroups = computed<CommandPaletteGroup[]>(() => {
-  const sessionItems = sessions.value.map(session => ({
-    label: sessionTitle(session),
-    suffix: session.workspace || undefined,
-    icon: session.pinned ? 'i-lucide-pin' : 'i-lucide-message-square',
-    active: isActiveSession(session),
-    onSelect: () => openSession(session)
-  }))
+  const query = normalizeSearchText(searchTerm.value)
+  const sessionItems = sessions.value
+    .filter(session => !query || sessionSearchText(session).includes(query))
+    .map(session => ({
+      label: sessionTitle(session),
+      suffix: workspaceDisplayLabel(session.workspace) || undefined,
+      icon: session.pinned ? 'i-lucide-pin' : 'i-lucide-message-square',
+      active: isActiveSession(session),
+      onSelect: () => openSession(session)
+    }))
 
   return sessionItems.length
-    ? [{ id: 'chats', label: 'Chats', items: sessionItems }]
+    ? [{ id: 'chats', label: 'Chats', ignoreFilter: Boolean(query), items: sessionItems }]
     : []
 })
 const profileOptions = computed(() => (profilesData.value?.profiles || []).map(profile => ({
@@ -68,6 +74,7 @@ const appUpdateStatus = ref<WebChatAppUpdateStatusResponse | null>(null)
 const appUpdatePending = ref(false)
 const appUpdateCompleted = ref(false)
 let workspaceDirectorySuggestionTimer: ReturnType<typeof setTimeout> | undefined
+let searchIndexTimer: ReturnType<typeof setTimeout> | undefined
 let hideUpdateTimer: ReturnType<typeof setTimeout> | undefined
 let hideAppUpdateTimer: ReturnType<typeof setTimeout> | undefined
 let updateStatusTimer: ReturnType<typeof setInterval> | undefined
@@ -142,6 +149,54 @@ function sessionTitle(session: WebChatSession) {
   return session.title || session.preview || 'Untitled chat'
 }
 
+function workspaceDisplayLabel(path: string | null) {
+  if (!path) return null
+  return context.workspaces.value.find(workspace => workspace.path === path)?.label || path
+}
+
+function normalizeSearchText(value: string | null | undefined) {
+  return (value || '').toLowerCase()
+}
+
+function sessionSearchText(session: WebChatSession) {
+  return normalizeSearchText([
+    sessionTitle(session),
+    session.preview,
+    workspaceDisplayLabel(session.workspace),
+    session.workspace,
+    searchMessageTextBySessionId.value[session.id]
+  ].filter(Boolean).join(' '))
+}
+
+function messageSearchText(message: WebChatMessage) {
+  return message.parts
+    .map(part => part.text || part.description || part.title || '')
+    .filter(Boolean)
+    .join(' ')
+}
+
+function sessionMessagesSearchText(messages: WebChatMessage[]) {
+  return messages.map(messageSearchText).filter(Boolean).join(' ')
+}
+
+async function indexSessionsForSearch() {
+  const query = normalizeSearchText(searchTerm.value.trim())
+  if (query.length < 2) return
+
+  const indexedIds = searchIndexedSessionIds.value
+  const sessionsToIndex = sessions.value.filter(session => !indexedIds.has(session.id))
+  if (!sessionsToIndex.length) return
+
+  await Promise.allSettled(sessionsToIndex.map(async (session) => {
+    const detail = await api.getSession(session.id, { includeWorkspaceChanges: false })
+    searchMessageTextBySessionId.value = {
+      ...searchMessageTextBySessionId.value,
+      [session.id]: sessionMessagesSearchText(detail.messages)
+    }
+    searchIndexedSessionIds.value = new Set([...searchIndexedSessionIds.value, session.id])
+  }))
+}
+
 async function startNewChat() {
   requestedSessionId.value = null
   newChatRequest.openNewChat(null)
@@ -202,6 +257,13 @@ watch(workspacePath, (path) => {
   workspaceDirectorySuggestionTimer = setTimeout(() => {
     void loadWorkspaceDirectorySuggestions(path)
   }, 150)
+})
+
+watch(searchTerm, () => {
+  if (searchIndexTimer) clearTimeout(searchIndexTimer)
+  searchIndexTimer = setTimeout(() => {
+    void indexSessionsForSearch()
+  }, 200)
 })
 
 async function refreshWorkspacesAndSessions() {
@@ -614,6 +676,7 @@ onBeforeUnmount(() => {
   if (updateStatusTimer) clearInterval(updateStatusTimer)
   document.removeEventListener('visibilitychange', handleVisibilityChange)
   if (workspaceDirectorySuggestionTimer) clearTimeout(workspaceDirectorySuggestionTimer)
+  if (searchIndexTimer) clearTimeout(searchIndexTimer)
   if (hideUpdateTimer) clearTimeout(hideUpdateTimer)
   if (hideAppUpdateTimer) clearTimeout(hideAppUpdateTimer)
   unsubscribeRunFinished?.()
@@ -743,6 +806,7 @@ provide('appUpdateControl', {
     </UDashboardSidebar>
 
     <UDashboardSearch
+      v-model:search-term="searchTerm"
       placeholder="Search chats..."
       :groups="searchGroups"
       :fuse="{ resultLimit: 20 }"
