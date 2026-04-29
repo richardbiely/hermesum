@@ -195,17 +195,20 @@ function sessionActionItems(session: WebChatSession): DropdownMenuItem[] {
           @dblclick.stop.prevent="isActiveSession(session) && renameSession(session)"
           @contextmenu.prevent="openSessionContextMenu(session, $event)"
         >
-          <span v-if="isUnreadSession(session)" class="absolute inset-y-0 left-2 flex items-center" aria-hidden="true">
+          <span v-if="isUnreadSession(session)" class="absolute inset-y-0 left-2.5 flex items-center" aria-hidden="true">
             <span class="block size-1.5 rounded-full bg-primary" />
           </span>
-          <UIcon
-            v-if="session.pinned"
-            name="i-lucide-pin"
-            class="size-3.5 shrink-0 text-muted"
-            :class="isUnreadSession(session) ? 'ml-4' : undefined"
+          <span
+            class="flex size-3.5 shrink-0 items-center justify-center"
             aria-hidden="true"
-          />
-          <span class="min-w-0 flex-1 truncate" :class="isUnreadSession(session) && !session.pinned ? 'pl-4' : undefined">
+          >
+            <UIcon
+              v-if="session.pinned"
+              name="i-lucide-pin"
+              class="size-3.5 text-muted"
+            />
+          </span>
+          <span class="min-w-0 flex-1 truncate">
             {{ sessionTitle(session) }}
           </span>
 
