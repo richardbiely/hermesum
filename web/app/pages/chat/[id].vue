@@ -8,7 +8,7 @@ import { latestChangePartKey, messageText } from '~/utils/chatMessages'
 import { filesFromClipboard, writeClipboardText } from '~/utils/clipboard'
 import { mergeOptimisticUserMessages } from '~/utils/optimisticChatMessages'
 import { markLocalMessageFailed, markLocalMessageSending, removeLocalMessage } from '~/utils/failedChatMessages'
-import { nearestScrollableAncestor, isElementVisibleInRoot } from '~/utils/chatInitialScroll'
+import { isElementVisibleInRoot, nearestScrollableAncestor, scrollElementTreeToBottomAfterRender } from '~/utils/chatInitialScroll'
 import { loadingChatSkeletonCount } from '~/utils/chatLoadingState'
 
 const INITIAL_SESSION_MESSAGE_LIMIT = 60
@@ -521,6 +521,16 @@ async function startRunForLocalMessage(
   }
 }
 
+function scrollSubmittedMessageToBottom() {
+  void scrollElementTreeToBottomAfterRender(chatContainer.value, {
+    waitForDomUpdate: nextTick,
+    waitForFrame: waitForAnimationFrame,
+    frameCount: 2,
+    stableFrameCount: 2,
+    maxFrameCount: 16
+  })
+}
+
 async function sendMessageNow(message: string) {
   const pendingAttachments = [...context.attachments.value]
   void prepareNotificationSound()
@@ -533,6 +543,7 @@ async function sendMessageNow(message: string) {
   optimisticUserMessageIds.add(userMessage.id)
   if (pendingAttachments.length) userMessage.parts.unshift({ type: 'media', attachments: pendingAttachments })
   messages.value.push(userMessage)
+  scrollSubmittedMessageToBottom()
   context.clearAttachments()
 
   await startRunForLocalMessage(

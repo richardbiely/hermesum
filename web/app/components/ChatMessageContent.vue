@@ -349,7 +349,7 @@ onBeforeUnmount(() => {
     <RunDetailsGroup
       v-if="group.type === 'process'"
       :parts="group.parts"
-      :expanded-default="isRunning"
+      :expanded-default="isActiveRunMessage"
     />
 
     <template v-else>
