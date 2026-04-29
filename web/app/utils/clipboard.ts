@@ -1,19 +1,29 @@
 export async function writeClipboardText(text: string) {
   if (navigator.clipboard?.writeText) {
-    await navigator.clipboard.writeText(text)
-    return
+    try {
+      await navigator.clipboard.writeText(text)
+      return
+    } catch {
+      // Some browsers deny async clipboard writes after an awaited operation.
+      // Fall through to the legacy copy path, which still works in more contexts.
+    }
   }
 
   const textarea = document.createElement('textarea')
   textarea.value = text
   textarea.setAttribute('readonly', '')
   textarea.style.position = 'fixed'
+  textarea.style.top = '0'
+  textarea.style.left = '0'
   textarea.style.opacity = '0'
   document.body.appendChild(textarea)
+  textarea.focus()
   textarea.select()
 
   try {
-    document.execCommand('copy')
+    if (!document.execCommand('copy')) {
+      throw new Error('Clipboard copy was blocked by the browser.')
+    }
   } finally {
     document.body.removeChild(textarea)
   }

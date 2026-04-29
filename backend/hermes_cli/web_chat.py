@@ -31,6 +31,7 @@ _PROJECT_SETTINGS_LOCK = threading.Lock()
 from .web_chat_modules.agent_runner import (
     agent_executor as _agent_executor_impl,
     conversation_history_for_agent as _conversation_history_for_agent_impl,
+    hidden_agent_response as _hidden_agent_response_impl,
 )
 from .web_chat_modules.attachments import (
     attachment_metadata_roots as _attachment_metadata_roots_impl,
@@ -59,6 +60,10 @@ from .web_chat_modules.capabilities import (
     resolve_requested_reasoning_effort as _resolve_requested_reasoning_effort_impl,
 )
 from .web_chat_modules.provider_usage import provider_usage as _provider_usage_impl
+from .web_chat_modules.git_commit import (
+    generate_commit_message as _generate_commit_message_impl,
+    git_status as _git_status_impl,
+)
 from .web_chat_modules.git_changes import (
     copy_session_git_changes as _copy_session_git_changes_impl,
     count_text_lines as _count_text_lines_impl,
@@ -103,6 +108,9 @@ from .web_chat_modules.commands import (
 from .web_chat_modules.models import (
     ExecuteCommandRequest,
     ExecuteCommandResponse,
+    GenerateCommitMessageRequest,
+    GitStatusResponse,
+    CommitMessageSuggestion,
     FilePreviewRequest,
     FilePreviewResolveRequest,
     ReorderWorkspacesRequest,
@@ -781,6 +789,44 @@ def _workspace_changes(workspace: str | None = None) -> WebChatWorkspaceChanges:
     return _workspace_changes_impl(workspace, workspace_root_func=_workspace_root)
 
 
+def _git_status(workspace: str | None = None) -> GitStatusResponse:
+    return _git_status_impl(workspace, workspace_root_func=_workspace_root)
+
+
+
+def _generate_commit_message(payload: GenerateCommitMessageRequest) -> CommitMessageSuggestion:
+    session = None
+    history: list[dict[str, str]] = []
+    if payload.sessionId:
+        try:
+            db = _db()
+            session = db.get_session(payload.sessionId)
+            history = _conversation_history_for_agent_impl(lambda: db, payload.sessionId)
+        except Exception:
+            session = None
+            history = []
+    model = str(session.get("model") or "") if session else None
+    config = _session_model_config_impl(session)
+    provider = config.get("provider") if isinstance(config.get("provider"), str) else None
+    reasoning_effort = _session_reasoning_effort(session)
+
+    return _generate_commit_message_impl(
+        payload,
+        workspace_root_func=_workspace_root,
+        conversation_history=history,
+        hidden_agent=lambda prompt: _hidden_agent_response_impl(
+            prompt,
+            conversation_history=history,
+            session_id=payload.sessionId,
+            workspace=payload.workspace,
+            model=model or None,
+            provider=provider,
+            reasoning_effort=reasoning_effort,
+        ),
+    )
+
+
+
 def _git_name_statuses(output: str) -> dict[str, str]:
     return _git_name_statuses_impl(output)
 
@@ -902,6 +948,8 @@ register_web_chat_routes(
         load_attachment=_load_attachment,
         validate_workspace=_validate_workspace,
         workspace_changes=_workspace_changes,
+        git_status=_git_status,
+        generate_commit_message=_generate_commit_message,
         title_from_message=_title_from_message,
         get_session_or_404=_get_session_or_404,
         edit_user_message=_edit_user_message,

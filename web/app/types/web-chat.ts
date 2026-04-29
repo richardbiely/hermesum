@@ -377,6 +377,61 @@ export type ExecuteCommandResponse = {
   changes?: WebChatWorkspaceChanges | null
 }
 
+
+export type GitChangeArea = 'staged' | 'unstaged' | 'untracked'
+export type GitChangeStatus = 'created' | 'edited' | 'deleted' | 'renamed' | 'copied' | 'untracked'
+
+export type GitFileSelection = {
+  path: string
+  area: GitChangeArea
+}
+
+export type GitStatusFile = {
+  path: string
+  oldPath?: string | null
+  area: GitChangeArea
+  status: GitChangeStatus
+  staged: boolean
+  unstaged: boolean
+  untracked: boolean
+  additions?: number | null
+  deletions?: number | null
+  binary?: boolean
+}
+
+export type GitStatusResponse = {
+  workspace: string
+  root: string
+  head?: string | null
+  branch?: string | null
+  ahead?: number | null
+  behind?: number | null
+  files: GitStatusFile[]
+  hasStagedChanges: boolean
+  hasUnstagedChanges: boolean
+  hasUntrackedChanges: boolean
+}
+
+export type GenerateCommitMessageRequest = {
+  workspace?: string | null
+  sessionId?: string | null
+  chatContext?: string | null
+  selection: GitFileSelection[]
+}
+
+export type CommitMessageSuggestion = {
+  subject: string
+  body?: string | null
+  warnings: string[]
+  splitSuggestions: Array<{
+    subject: string
+    paths: string[]
+    reason: string
+  }>
+  rulesSource: string
+  contextSummary: string
+}
+
 export type StartRunResponse = {
   sessionId: string
   runId: string

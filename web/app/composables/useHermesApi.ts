@@ -4,6 +4,9 @@ import type {
   ExecuteCommandResponse,
   FilePreviewRequest,
   FilePreviewResolveRequest,
+  GenerateCommitMessageRequest,
+  GitStatusResponse,
+  CommitMessageSuggestion,
   ReorderWorkspacesRequest,
   SaveWorkspaceRequest,
   SessionDetailResponse,
@@ -116,6 +119,13 @@ export function useHermesApi() {
     }),
     getWorkspaceChanges: (workspace?: string | null) => request<WebChatWorkspaceChanges>('/api/web-chat/workspace-changes', {
       query: workspace ? { workspace } : undefined
+    }),
+    getGitStatus: (workspace?: string | null) => request<GitStatusResponse>('/api/web-chat/git/status', {
+      query: workspace ? { workspace } : undefined
+    }),
+    generateCommitMessage: (payload: GenerateCommitMessageRequest) => request<CommitMessageSuggestion>('/api/web-chat/git/commit-message', {
+      method: 'POST',
+      body: payload
     }),
     fetchFilePreview: (payload: FilePreviewRequest) => request<WebChatFilePreview>('/api/web-chat/file-preview', {
       method: 'POST',

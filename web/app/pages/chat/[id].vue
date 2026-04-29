@@ -2,7 +2,7 @@
 import { playNotificationSound, prepareNotificationSound } from '../../utils/notificationSound'
 import { recoverActiveRun } from '../../utils/activeRunRecovery'
 import { connectRouteRun } from '../../utils/routeRunConnection'
-import type { SessionDetailResponse, WebChatAttachment, WebChatMessage } from '~/types/web-chat'
+import type { GitFileSelection, SessionDetailResponse, WebChatAttachment, WebChatMessage } from '~/types/web-chat'
 import type { QueuedMessage } from '~/utils/queuedMessages'
 import { latestChangePartKey, messageText } from '~/utils/chatMessages'
 import { filesFromClipboard, writeClipboardText } from '~/utils/clipboard'
@@ -26,6 +26,10 @@ const providerUsage = useProviderUsage(
 const activeChatRuns = useActiveChatRuns()
 const context = useChatComposerContext()
 const toast = useToast()
+const generatingCommitMessage = ref(false)
+const generatedCommitMessage = ref('')
+const commitMessageModalOpen = ref(false)
+const commitMessageCopied = ref(false)
 const { input } = useChatDraft(sessionId)
 const chatContainer = ref<HTMLElement | null>(null)
 const bottomReadSentinel = ref<HTMLElement | null>(null)
@@ -40,6 +44,7 @@ const loadingOlderMessages = ref(false)
 const olderMessagesError = ref<string | null>(null)
 let preserveScrollAfterPrepend: { root: Element, previousScrollHeight: number, previousScrollTop: number } | null = null
 let copiedMessageTimer: ReturnType<typeof setTimeout> | undefined
+let commitMessageCopiedTimer: ReturnType<typeof setTimeout> | undefined
 const refreshSessions = inject<() => Promise<void> | void>('refreshSessions')
 const markSessionRead = inject<(sessionId: string, messageCount: number) => void>('markSessionRead')
 const requestedSessionId = inject<Readonly<Ref<string | null>>>('requestedSessionId')
@@ -320,6 +325,62 @@ async function onPromptPaste(event: ClipboardEvent) {
 
 function showVoiceError(message: string) {
   showError(new Error(message), 'Voice input failed')
+}
+
+function showCommitMessageCopied() {
+  commitMessageCopied.value = true
+  if (commitMessageCopiedTimer) clearTimeout(commitMessageCopiedTimer)
+  commitMessageCopiedTimer = setTimeout(() => {
+    commitMessageCopied.value = false
+    commitMessageCopiedTimer = undefined
+  }, 2500)
+}
+
+async function copyGeneratedCommitMessage() {
+  if (!generatedCommitMessage.value) return
+
+  try {
+    await writeClipboardText(generatedCommitMessage.value)
+    showCommitMessageCopied()
+  } catch (err) {
+    toast.add({
+      color: 'error',
+      title: 'Could not copy commit message',
+      description: err instanceof Error ? err.message : String(err)
+    })
+  }
+}
+
+async function generateCommitMessage() {
+  if (!context.selectedWorkspace.value || generatingCommitMessage.value) return
+
+  generatingCommitMessage.value = true
+  generatedCommitMessage.value = ''
+  commitMessageCopied.value = false
+  if (commitMessageCopiedTimer) {
+    clearTimeout(commitMessageCopiedTimer)
+    commitMessageCopiedTimer = undefined
+  }
+  try {
+    const status = await api.getGitStatus(context.selectedWorkspace.value)
+    const selection: GitFileSelection[] = status.files.map(file => ({ area: file.area, path: file.path }))
+    if (!selection.length) {
+      toast.add({ color: 'warning', title: 'No Git changes', description: 'There are no changed files to generate a commit message from.' })
+      return
+    }
+
+    const suggestion = await api.generateCommitMessage({
+      workspace: context.selectedWorkspace.value,
+      sessionId: sessionId.value,
+      selection
+    })
+    generatedCommitMessage.value = [suggestion.subject, suggestion.body].filter(Boolean).join('\n\n')
+    commitMessageModalOpen.value = true
+  } catch (err) {
+    showError(err, 'Could not generate commit message')
+  } finally {
+    generatingCommitMessage.value = false
+  }
 }
 
 async function stopRun() {
@@ -820,6 +881,7 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   if (copiedMessageTimer) clearTimeout(copiedMessageTimer)
+  if (commitMessageCopiedTimer) clearTimeout(commitMessageCopiedTimer)
   if (previousScrollRestoration) history.scrollRestoration = previousScrollRestoration
   bottomReadObserver?.disconnect()
   olderMessagesObserver?.disconnect()
@@ -840,6 +902,10 @@ onBeforeUnmount(() => {
         :workspace-status="workspaceStatus"
         :provider-usage="providerUsage.usage.value"
         :provider-usage-loading="providerUsage.loading.value"
+        commit-visible
+        :commit-disabled="!context.selectedWorkspace.value"
+        :commit-loading="generatingCommitMessage"
+        @generate-commit="generateCommitMessage"
       />
     </template>
 
@@ -1011,4 +1077,40 @@ onBeforeUnmount(() => {
       </UContainer>
     </template>
   </UDashboardPanel>
+
+  <UModal
+    v-model:open="commitMessageModalOpen"
+    title="Generated commit message"
+    description="Review the generated message before copying it."
+    :ui="{ content: 'sm:max-w-lg' }"
+  >
+    <template #body>
+      <div class="space-y-3">
+        <UTextarea
+          v-model="generatedCommitMessage"
+          readonly
+          :rows="14"
+          class="w-full font-mono text-sm"
+          aria-label="Generated commit message"
+        />
+      </div>
+    </template>
+
+    <template #footer>
+      <div class="flex w-full justify-between gap-2">
+        <UButton
+          color="neutral"
+          variant="ghost"
+          label="Close"
+          @click="commitMessageModalOpen = false"
+        />
+        <UButton
+          color="neutral"
+          icon="i-lucide-copy"
+          :label="commitMessageCopied ? 'Copied' : 'Copy'"
+          @click="copyGeneratedCommitMessage"
+        />
+      </div>
+    </template>
+  </UModal>
 </template>

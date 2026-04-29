@@ -20,6 +20,9 @@ from .models import (
     ExecuteCommandResponse,
     FilePreviewRequest,
     FilePreviewResolveRequest,
+    GenerateCommitMessageRequest,
+    GitStatusResponse,
+    CommitMessageSuggestion,
     RenameSessionRequest,
     ReorderWorkspacesRequest,
     RespondRunPromptRequest,
@@ -84,6 +87,8 @@ class WebChatRouteServices:
     load_attachment: Callable[[str, str | None], WebChatAttachment]
     validate_workspace: Callable[[str | None], Path | None]
     workspace_changes: Callable[[str | None], WebChatWorkspaceChanges]
+    git_status: Callable[[str | None], GitStatusResponse]
+    generate_commit_message: Callable[[GenerateCommitMessageRequest], CommitMessageSuggestion]
     title_from_message: Callable[[str], str]
     get_session_or_404: Callable[[SessionDB, str], dict[str, Any]]
     edit_user_message: Callable[[SessionDB, str, str, str], None]
@@ -213,6 +218,18 @@ def register_web_chat_routes(router: APIRouter, services: WebChatRouteServices) 
     def get_workspace_changes(workspace: str | None = None) -> WebChatWorkspaceChanges:
         validated = services.validate_workspace(workspace)
         return services.workspace_changes(str(validated) if validated else None)
+
+    @router.get("/git/status", response_model=GitStatusResponse)
+    def get_git_status(workspace: str | None = None) -> GitStatusResponse:
+        validated = services.validate_workspace(workspace)
+        return services.git_status(str(validated) if validated else None)
+
+
+    @router.post("/git/commit-message", response_model=CommitMessageSuggestion)
+    def generate_git_commit_message(payload: GenerateCommitMessageRequest) -> CommitMessageSuggestion:
+        validated = services.validate_workspace(payload.workspace)
+        payload.workspace = str(validated) if validated else None
+        return services.generate_commit_message(payload)
 
     @router.post("/file-preview", response_model=WebChatFilePreview, response_model_exclude_none=True)
     def get_file_preview(payload: FilePreviewRequest) -> WebChatFilePreview:

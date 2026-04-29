@@ -20,12 +20,19 @@ const props = defineProps<{
   } | null
   providerUsage?: WebChatProviderUsageResponse | null
   providerUsageLoading?: boolean
+  commitVisible?: boolean
+  commitDisabled?: boolean
+  commitLoading?: boolean
   updateVisible?: boolean
   updatePending?: boolean
   updateCompleted?: boolean
   updateLabel?: string
   updateColor?: 'primary' | 'success'
   updateTitle?: string
+}>()
+
+const emit = defineEmits<{
+  generateCommit: []
 }>()
 
 const updateControl = inject<UpdateControl | null>('hermesUpdateControl', null)
@@ -65,6 +72,18 @@ function submitAppUpdate() {
 
     <template #right>
       <div class="flex items-center gap-3">
+        <UButton
+          v-if="commitVisible"
+          aria-label="Generate commit message"
+          icon="i-lucide-sparkles"
+          label="Generate commit"
+          color="neutral"
+          variant="ghost"
+          size="sm"
+          :loading="commitLoading"
+          :disabled="commitDisabled || commitLoading"
+          @click="emit('generateCommit')"
+        />
         <ProviderUsageBadge :usage="providerUsage" :loading="providerUsageLoading" />
         <UButton
           v-if="resolvedUpdateVisible"

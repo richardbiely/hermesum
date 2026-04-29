@@ -45,6 +45,7 @@ If someone lands on this repository, they should immediately understand that Her
 - Workspace and project switching built into the conversation flow.
 - Code-change history captured from git so users can review what changed during a session.
 - Workspace snapshots and change surfaces that make file modifications visible from chat.
+- Lightweight commit-message generation from the current chat and Git diff using project commit-message rules, shown in a small modal with an explicit copy action.
 - Local file previews for referenced workspace files, with safe text preview limits.
 
 ### Better inspection and review
@@ -100,6 +101,8 @@ Core web-chat routes include:
 - `DELETE /api/web-chat/workspaces/{workspace_id}`
 - `GET /api/web-chat/workspace-directories`
 - `GET /api/web-chat/workspace-changes`
+- `GET /api/web-chat/git/status`
+- `POST /api/web-chat/git/commit-message`
 - `POST /api/web-chat/file-preview`
 - `POST /api/web-chat/attachments`
 - `GET /api/web-chat/attachments/{attachment_id}`
@@ -111,9 +114,9 @@ Core web-chat routes include:
 
 The backend is built around explicit run management, SSE event streaming, queue-backed prompts, typed Pydantic responses, workspace validation, and modular route domains so interactive runs can be stopped, continued, inspected, and coordinated predictably.
 
-Git integration is currently used for code-change history: capturing and surfacing what changed in a selected workspace during a session. It is not positioned as a full git client, branch manager, or deployment workflow yet.
+Git integration is used for code-change history and lightweight commit-message generation from chat. The chat navbar exposes `Generate commit`, which reads the selected workspace's current Git changes, asks Hermes privately for a commit message using the current chat context plus the Git diff, and opens the generated message in a small modal with an explicit `Copy` action. The hidden generation prompt and answer are not persisted to visible chat history. Generation follows project commit-message rules, uses Conventional Commits only when no project rules are found, and fails with an error instead of falling back to a heuristic message.
 
-Attachments uploaded from the UI are stored in the selected project under `.hermes/attachments/`, ignored by git in this prototype. Images render inline, other files use the authenticated content endpoint when supported by the browser, and deleted files remain visible in history as unavailable placeholders.
+Attachments uploaded from the UI are stored under `.hermes/attachments/` in the selected project, ignored by git in this prototype. Images render inline, other files use the authenticated content endpoint when supported by the browser, and deleted files remain visible in history as unavailable placeholders.
 
 Local file previews are resolved against the selected workspace or its git root, limited to safe text preview sizes, and include language/media metadata for better code reading in the UI.
 

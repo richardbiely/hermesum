@@ -258,6 +258,85 @@ class WebChatWorkspaceChanges(BaseModel):
     patchTruncated: bool | None = None
 
 
+GitChangeArea = Literal["staged", "unstaged", "untracked"]
+GitChangeStatus = Literal["created", "edited", "deleted", "renamed", "copied", "untracked"]
+
+
+class GitFileSelection(BaseModel):
+    path: str = Field(min_length=1, max_length=4096)
+    area: GitChangeArea
+
+
+class GitStatusFile(BaseModel):
+    path: str
+    oldPath: str | None = None
+    area: GitChangeArea
+    status: GitChangeStatus
+    staged: bool = False
+    unstaged: bool = False
+    untracked: bool = False
+    additions: int | None = None
+    deletions: int | None = None
+    binary: bool = False
+
+
+class GitStatusResponse(BaseModel):
+    workspace: str
+    root: str
+    head: str | None = None
+    branch: str | None = None
+    ahead: int | None = None
+    behind: int | None = None
+    files: list[GitStatusFile]
+    hasStagedChanges: bool
+    hasUnstagedChanges: bool
+    hasUntrackedChanges: bool
+
+
+class GitDiffFile(BaseModel):
+    path: str
+    oldPath: str | None = None
+    area: GitChangeArea
+    status: GitChangeStatus
+    patch: str | None = None
+    additions: int = 0
+    deletions: int = 0
+    truncated: bool = False
+    binary: bool = False
+
+
+class GitDiffResponse(BaseModel):
+    workspace: str
+    root: str
+    fingerprint: str
+    files: list[GitDiffFile]
+    totalAdditions: int
+    totalDeletions: int
+    truncated: bool = False
+
+
+class GenerateCommitMessageRequest(BaseModel):
+    workspace: str | None = None
+    sessionId: str | None = None
+    chatContext: str | None = Field(default=None, max_length=20000)
+    selection: list[GitFileSelection] = Field(default_factory=list, max_length=200)
+
+
+class CommitSplitSuggestion(BaseModel):
+    subject: str
+    paths: list[str]
+    reason: str
+
+
+class CommitMessageSuggestion(BaseModel):
+    subject: str
+    body: str | None = None
+    warnings: list[str] = Field(default_factory=list)
+    splitSuggestions: list[CommitSplitSuggestion] = Field(default_factory=list)
+    rulesSource: str = "Conventional Commits"
+    contextSummary: str = "selected Git changes"
+
+
 class WebChatIsolatedWorkspace(BaseModel):
     sessionId: str
     sourceWorkspace: str

@@ -302,6 +302,74 @@ def agent_executor(
         restore_approval_env()
 
 
+def hidden_agent_response(
+    prompt: str,
+    *,
+    conversation_history: list[dict[str, str]],
+    session_id: str | None = None,
+    workspace: str | None = None,
+    model: str | None = None,
+    provider: str | None = None,
+    reasoning_effort: str | None = None,
+) -> str:
+    """Ask the same Hermes agent privately without persisting messages to web chat."""
+    from hermes_constants import parse_reasoning_effort
+    from hermes_cli.config import load_config
+    from hermes_cli.runtime_provider import resolve_runtime_provider
+    from run_agent import AIAgent
+
+    cfg = load_config() or {}
+    model_cfg = cfg.get("model") or {}
+    agent_cfg = cfg.get("agent") or {}
+    provider_routing = cfg.get("provider_routing") or {}
+    requested_model = model or model_cfg.get("default") or model_cfg.get("model") or ""
+    runtime = resolve_runtime_provider(
+        requested=provider or model_cfg.get("provider") or "auto",
+        target_model=requested_model,
+    )
+    resolved_model = model or runtime.get("model") or model_cfg.get("default") or model_cfg.get("model") or ""
+    api_key = runtime.get("api_key")
+    base_url = runtime.get("base_url")
+    if not api_key and base_url and "openrouter.ai" not in base_url:
+        api_key = "no-key-required"
+
+    max_iterations = int(agent_cfg.get("commit_message_max_turns") or 2)
+    if workspace:
+        prompt = (
+            f"Workspace: {workspace}. Use this only as project context; do not run tools or modify files.\n\n"
+            f"{prompt}"
+        )
+
+    agent = AIAgent(
+        model=resolved_model,
+        api_key=api_key,
+        base_url=base_url,
+        provider=runtime.get("provider"),
+        api_mode=runtime.get("api_mode"),
+        acp_command=runtime.get("command"),
+        acp_args=runtime.get("args"),
+        credential_pool=runtime.get("credential_pool"),
+        max_iterations=max_iterations,
+        enabled_toolsets=[],
+        quiet_mode=True,
+        platform=WEB_CHAT_SOURCE,
+        session_id=session_id,
+        session_db=None,
+        fallback_model=None,
+        providers_allowed=provider_routing.get("only"),
+        providers_ignored=provider_routing.get("ignore"),
+        providers_order=provider_routing.get("order"),
+        provider_sort=provider_routing.get("sort"),
+        reasoning_config=parse_reasoning_effort(reasoning_effort or ""),
+    )
+    result = agent.run_conversation(
+        prompt,
+        conversation_history=conversation_history,
+        task_id=f"commit-message-{uuid4().hex}",
+    )
+    return str(result.get("final_response") or "").strip()
+
+
 def conversation_history_for_agent(db_factory: Callable[[], Any], session_id: str) -> list[dict[str, str]]:
     messages = db_factory().get_messages(session_id)
     if messages and messages[-1].get("role") == "user":
