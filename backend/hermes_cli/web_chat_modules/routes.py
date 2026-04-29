@@ -120,10 +120,14 @@ def register_web_chat_routes(router: APIRouter, services: WebChatRouteServices) 
 
     @router.get("/capabilities", response_model=WebChatCapabilitiesResponse)
     def get_capabilities() -> WebChatCapabilitiesResponse:
+        models = services.model_capabilities()
+        default_model = services.default_model_id()
+        default_capability = next((model for model in models if model.id == default_model), None) or (models[0] if models else None)
         return WebChatCapabilitiesResponse(
             provider=services.active_provider_id(),
-            defaultModel=services.default_model_id(),
-            models=services.model_capabilities(),
+            defaultModel=default_model or (default_capability.id if default_capability else None),
+            defaultProvider=default_capability.provider if default_capability else services.active_provider_id(),
+            models=models,
         )
 
     @router.get("/provider-usage", response_model=WebChatProviderUsageResponse, response_model_exclude_none=True)

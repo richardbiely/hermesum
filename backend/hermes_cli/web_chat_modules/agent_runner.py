@@ -122,8 +122,10 @@ def agent_executor(
     agent_cfg = cfg.get("agent") or {}
     provider_routing = cfg.get("provider_routing") or {}
 
+    requested_model = context.model or model_cfg.get("default") or model_cfg.get("model") or ""
     runtime = resolve_runtime_provider(
         requested=context.provider or model_cfg.get("provider") or "auto",
+        target_model=requested_model,
     )
     model = context.model or runtime.get("model") or model_cfg.get("default") or model_cfg.get("model") or ""
     api_key = runtime.get("api_key")

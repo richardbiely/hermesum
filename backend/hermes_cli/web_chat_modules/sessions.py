@@ -56,6 +56,12 @@ def session_workspace(session: dict[str, Any] | None) -> str | None:
     return value.strip() if isinstance(value, str) and value.strip() else None
 
 
+def session_provider(session: dict[str, Any] | None) -> str | None:
+    config = session_model_config(session)
+    value = config.get("provider")
+    return value.strip() if isinstance(value, str) and value.strip() else None
+
+
 def session_reasoning_effort(session: dict[str, Any] | None) -> str | None:
     config = session_model_config(session)
     value = config.get("reasoningEffort") or config.get("reasoning_effort")
@@ -85,6 +91,7 @@ def serialize_session(session: dict[str, Any]) -> WebChatSession:
         preview=session.get("preview") or "",
         source=session.get("source"),
         model=session.get("model"),
+        provider=session_provider(session),
         reasoningEffort=session_reasoning_effort(session),
         workspace=session_workspace(session),
         pinned=session_pinned(session),

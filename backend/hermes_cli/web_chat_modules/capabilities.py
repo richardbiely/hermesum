@@ -75,19 +75,25 @@ def _dedupe_model_ids(model_ids: list[str], preferred: str | None = None) -> lis
     return result
 
 
+def codex_model_ids(resolve_access_token: Callable[[], str | None] = resolve_codex_access_token) -> list[str]:
+    configured_model = _configured_model_id()
+    preferred = configured_model if configured_model and configured_model.startswith("gpt-5") else None
+    try:
+        from hermes_cli.codex_models import DEFAULT_CODEX_MODELS, get_codex_model_ids
+
+        model_ids = get_codex_model_ids(access_token=resolve_access_token())
+        return _dedupe_model_ids(model_ids or list(DEFAULT_CODEX_MODELS), preferred=preferred)
+    except Exception:
+        return _dedupe_model_ids(list(FALLBACK_CODEX_MODELS), preferred=preferred)
+
+
 def available_model_ids(resolve_access_token: Callable[[], str | None] = resolve_codex_access_token) -> list[str]:
     configured_model = _configured_model_id()
     runtime = runtime_provider(target_model=configured_model)
     provider = str(runtime.get("provider") or "").strip().lower()
 
     if provider == "openai-codex" or (not provider and configured_model and configured_model.startswith("gpt-5")):
-        try:
-            from hermes_cli.codex_models import DEFAULT_CODEX_MODELS, get_codex_model_ids
-
-            model_ids = get_codex_model_ids(access_token=resolve_access_token())
-            return _dedupe_model_ids(model_ids or list(DEFAULT_CODEX_MODELS), preferred=configured_model)
-        except Exception:
-            return _dedupe_model_ids(list(FALLBACK_CODEX_MODELS), preferred=configured_model)
+        return codex_model_ids(resolve_access_token)
 
     base_url = str(runtime.get("base_url") or "").strip()
     api_key = str(runtime.get("api_key") or "").strip()
@@ -186,27 +192,126 @@ def model_auto_compress_tokens(model_id: str | None) -> int | None:
     return round(context_window_tokens * threshold)
 
 
-def model_capabilities(available_ids: Callable[[], list[str]] = available_model_ids) -> list[WebChatModelCapability]:
-    capabilities: list[WebChatModelCapability] = []
+def _provider_label(provider_id: str | None) -> str | None:
+    labels = {
+        "openai": "OpenAI",
+        "openai-codex": "OpenAI",
+        "xai": "xAI",
+        "anthropic": "Anthropic",
+        "google": "Google",
+        "google-gemini-cli": "Google",
+        "gemini": "Google",
+        "openrouter": "OpenRouter",
+        "nous": "Nous",
+        "qwen-oauth": "Qwen",
+        "qwen": "Qwen",
+        "copilot": "GitHub Copilot",
+    }
+    normalized = str(provider_id or "").strip().lower()
+    if not normalized:
+        return None
+    return labels.get(normalized) or normalized.replace("-", " ").title()
+
+
+def _capability_for_model(model_id: str, provider: str | None = None, provider_label: str | None = None) -> WebChatModelCapability:
     compression_threshold = _compression_threshold()
-    for model_id in available_ids():
-        context_window_tokens = model_context_window_tokens(model_id)
-        auto_compress_tokens = (
-            round(context_window_tokens * compression_threshold)
-            if context_window_tokens and compression_threshold is not None
-            else None
+    context_window_tokens = model_context_window_tokens(model_id)
+    auto_compress_tokens = (
+        round(context_window_tokens * compression_threshold)
+        if context_window_tokens and compression_threshold is not None
+        else None
+    )
+    return WebChatModelCapability(
+        id=model_id,
+        label=model_id,
+        reasoningEfforts=model_reasoning_efforts(model_id),
+        defaultReasoningEffort=default_reasoning_effort(model_id),
+        contextWindowTokens=context_window_tokens,
+        autoCompressTokens=auto_compress_tokens,
+        provider=provider,
+        providerLabel=provider_label or _provider_label(provider),
+    )
+
+
+def _live_provider_model_ids(provider: dict[str, Any], max_models: int) -> list[str]:
+    """Return live model IDs for OpenAI-compatible providers when available."""
+    provider_id = str(provider.get("slug") or "").strip()
+    if provider_id == "openai-codex":
+        return []
+
+    try:
+        import os
+        from hermes_cli.auth import PROVIDER_REGISTRY
+        from hermes_cli.models import fetch_api_models
+
+        provider_config = PROVIDER_REGISTRY.get(provider_id)
+        base_url = str(provider.get("api_url") or "").strip()
+        if not base_url and provider_config:
+            base_url = str(getattr(provider_config, "inference_base_url", "") or "").strip()
+        api_key = ""
+        if provider_config and getattr(provider_config, "api_key_env_vars", None):
+            for env_var in provider_config.api_key_env_vars:
+                api_key = os.environ.get(env_var, "").strip()
+                if api_key:
+                    break
+
+        api_mode = None
+        if not base_url or not api_key:
+            runtime = runtime_provider(requested=provider_id)
+            base_url = base_url or str(runtime.get("base_url") or "").strip()
+            api_key = api_key or str(runtime.get("api_key") or "").strip()
+            api_mode = str(runtime.get("api_mode") or "").strip() or None
+
+        if not base_url or not api_key:
+            return []
+
+        return fetch_api_models(api_key, base_url, timeout=4.0, api_mode=api_mode)[:max_models]
+    except Exception:
+        return []
+
+
+def authenticated_model_capabilities(max_models_per_provider: int = 200) -> list[WebChatModelCapability]:
+    try:
+        from hermes_cli.config import get_compatible_custom_providers, load_config
+        from hermes_cli.model_switch import list_authenticated_providers
+
+        cfg = load_config() or {}
+        model_cfg = cfg.get("model") if isinstance(cfg.get("model"), dict) else {}
+        providers = list_authenticated_providers(
+            current_provider=str(model_cfg.get("provider") or ""),
+            current_base_url=str(model_cfg.get("base_url") or ""),
+            user_providers=cfg.get("providers") if isinstance(cfg.get("providers"), dict) else {},
+            custom_providers=get_compatible_custom_providers(cfg),
+            max_models=max_models_per_provider,
         )
-        capabilities.append(
-            WebChatModelCapability(
-                id=model_id,
-                label=model_id,
-                reasoningEfforts=model_reasoning_efforts(model_id),
-                defaultReasoningEffort=default_reasoning_effort(model_id),
-                contextWindowTokens=context_window_tokens,
-                autoCompressTokens=auto_compress_tokens,
-            )
-        )
+    except Exception:
+        return []
+
+    capabilities: list[WebChatModelCapability] = []
+    seen: set[tuple[str, str]] = set()
+    for provider in providers:
+        provider_id = str(provider.get("slug") or "").strip()
+        provider_label = _provider_label(provider_id) or str(provider.get("name") or "").strip() or provider_id
+        if provider_id == "openai-codex":
+            model_ids = codex_model_ids()
+        else:
+            model_ids = _live_provider_model_ids(provider, max_models_per_provider)
+        if not model_ids:
+            continue
+        for model_id in model_ids:
+            key = (provider_id, model_id)
+            if not provider_id or not model_id or key in seen:
+                continue
+            seen.add(key)
+            capabilities.append(_capability_for_model(model_id, provider_id, provider_label))
     return capabilities
+
+
+def model_capabilities(available_ids: Callable[[], list[str]] = available_model_ids) -> list[WebChatModelCapability]:
+    authenticated_capabilities = authenticated_model_capabilities()
+    if authenticated_capabilities:
+        return authenticated_capabilities
+    return [_capability_for_model(model_id, active_provider_id()) for model_id in available_ids()]
 
 
 def default_model_id(available_ids: Callable[[], list[str]] = available_model_ids) -> str | None:

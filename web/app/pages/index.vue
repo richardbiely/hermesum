@@ -12,7 +12,7 @@ const router = useRouter()
 const refreshSessions = inject<() => Promise<void> | void>('refreshSessions')
 const composer = useChatComposerCapabilities()
 const providerUsage = useProviderUsage(
-  computed(() => composer.capabilities.value?.provider || null),
+  composer.selectedProvider,
   composer.selectedModel
 )
 const activeChatRuns = useActiveChatRuns()
@@ -82,6 +82,7 @@ async function onSubmit() {
   try {
     const result = await api.startRun(message, {
       model: composer.selectedModel.value,
+      provider: composer.selectedProvider.value,
       reasoningEffort: composer.selectedReasoningEffort.value,
       workspace: context.selectedWorkspace.value,
       attachments: context.attachments.value.map(attachment => attachment.id)
@@ -141,6 +142,7 @@ async function onSubmit() {
                 :attachments-loading="context.attachmentsLoading.value"
                 :models="composer.models.value"
                 :selected-model="composer.selectedModel.value"
+                :selected-provider="composer.selectedProvider.value"
                 :selected-reasoning-effort="composer.selectedReasoningEffort.value"
                 :capabilities-loading="composer.capabilitiesLoading.value"
                 :slash-commands="slashCommands.filteredCommands.value"
@@ -153,6 +155,7 @@ async function onSubmit() {
                 @voice-text="appendVoiceText"
                 @voice-error="showVoiceError"
                 @update-selected-model="composer.selectedModel.value = $event"
+                @update-selected-provider="composer.selectedProvider.value = $event"
                 @update-selected-reasoning-effort="composer.selectedReasoningEffort.value = $event"
                 @select-slash-command="selectSlashCommand"
                 @highlight-slash-command="slashCommands.highlightedIndex.value = $event"

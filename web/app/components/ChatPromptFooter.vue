@@ -39,6 +39,7 @@ type ChatPromptFooterProps = {
   attachmentsLoading?: boolean
   models?: WebChatModelCapability[]
   selectedModel?: string | null
+  selectedProvider?: string | null
   selectedReasoningEffort?: string | null
   capabilitiesLoading?: boolean
   slashCommands?: WebChatCommand[]
@@ -56,6 +57,7 @@ const props = withDefaults(defineProps<ChatPromptFooterProps>(), {
   attachmentsLoading: false,
   models: () => [],
   selectedModel: null,
+  selectedProvider: null,
   selectedReasoningEffort: null,
   capabilitiesLoading: false,
   slashCommands: () => [],
@@ -72,6 +74,7 @@ const emit = defineEmits<{
   voiceText: [text: string]
   voiceError: [message: string]
   updateSelectedModel: [model: string]
+  updateSelectedProvider: [provider: string | null]
   updateSelectedReasoningEffort: [reasoningEffort: string]
   selectSlashCommand: [command: WebChatCommand]
   highlightSlashCommand: [index: number]
@@ -81,8 +84,26 @@ const fileInput = ref<HTMLInputElement | null>(null)
 const workspaceInvalid = ref(false)
 const voiceStatus = ref<'idle' | 'listening' | 'error'>('idle')
 const recognition = ref<SpeechRecognitionInstance | null>(null)
+const modelPickerOpen = ref(false)
+const modelSearch = ref('')
 
-const selectedModelCapability = computed(() => props.models.find(model => model.id === props.selectedModel) || null)
+type ModelSelectItem = {
+  label: string
+  provider: string | null
+  providerLabel: string
+  model: WebChatModelCapability
+}
+
+type ModelSelectGroup = {
+  providerLabel: string
+  items: ModelSelectItem[]
+}
+
+const selectedModelCapability = computed(() => {
+  return props.models.find(model => model.id === props.selectedModel && (!props.selectedProvider || model.provider === props.selectedProvider))
+    || props.models.find(model => model.id === props.selectedModel)
+    || null
+})
 const reasoningEfforts = computed(() => selectedModelCapability.value?.reasoningEfforts || [])
 const selectedWorkspaceItem = computed(() => props.workspaces.find(workspace => workspace.path === props.selectedWorkspace) || null)
 const controlsDisabled = computed(() => props.submitStatus === 'submitted' || props.submitStatus === 'streaming')
@@ -146,12 +167,47 @@ const workspaceItems = computed<DropdownMenuItem[]>(() => [
   }))
 ])
 
-const modelItems = computed<DropdownMenuItem[]>(() => props.models.map(model => ({
-  label: model.label,
-  checked: model.id === props.selectedModel,
-  onSelect: () => emit('updateSelectedModel', model.id),
-  trailingIcon: model.id === props.selectedModel ? 'i-lucide-check' : undefined
-})))
+const modelGroups = computed<ModelSelectGroup[]>(() => {
+  const groups = new Map<string, ModelSelectItem[]>()
+  for (const model of props.models) {
+    const providerLabel = model.providerLabel || model.provider || 'Other'
+    const item: ModelSelectItem = {
+      label: model.label,
+      provider: model.provider || null,
+      providerLabel,
+      model
+    }
+    const group = groups.get(providerLabel) || []
+    group.push(item)
+    groups.set(providerLabel, group)
+  }
+
+  return Array.from(groups.entries()).map(([providerLabel, items]) => ({
+    providerLabel,
+    items: items.sort((a, b) => a.label.localeCompare(b.label))
+  }))
+})
+
+const filteredModelGroups = computed<ModelSelectGroup[]>(() => {
+  const query = modelSearch.value.trim().toLowerCase()
+  if (!query) return modelGroups.value
+
+  return modelGroups.value
+    .map(group => ({
+      providerLabel: group.providerLabel,
+      items: group.items.filter(item => `${item.label} ${item.providerLabel}`.toLowerCase().includes(query))
+    }))
+    .filter(group => group.items.length > 0)
+})
+
+const hasModelItems = computed(() => modelGroups.value.some(group => group.items.length > 0))
+
+function selectModel(item: ModelSelectItem) {
+  emit('updateSelectedModel', item.model.id)
+  emit('updateSelectedProvider', item.provider)
+  modelPickerOpen.value = false
+  modelSearch.value = ''
+}
 
 const reasoningItems = computed<DropdownMenuItem[]>(() => reasoningEfforts.value.map(reasoningEffort => ({
   label: reasoningEffort,
@@ -303,11 +359,68 @@ onBeforeUnmount(() => {
           </UButton>
         </UDropdownMenu>
 
-        <UDropdownMenu :items="modelItems" :disabled="capabilitiesLoading || !modelItems.length" size="sm" :content="{ align: 'start', side: 'top', sideOffset: 8 }">
-          <UButton aria-label="Model" icon="i-lucide-cpu" trailing-icon="i-lucide-chevron-down" color="neutral" variant="ghost" size="sm" class="shrink-0" :loading="capabilitiesLoading && !modelItems.length">
-            {{ modelLabel }}
+        <UPopover
+          v-model:open="modelPickerOpen"
+          :content="{ align: 'start', side: 'top', sideOffset: 8 }"
+          :ui="{ content: 'w-80 p-0' }"
+        >
+          <UButton
+            aria-label="Model"
+            icon="i-lucide-cpu"
+            trailing-icon="i-lucide-chevron-down"
+            color="neutral"
+            variant="ghost"
+            size="sm"
+            class="max-w-56 shrink-0"
+            :disabled="capabilitiesLoading || !hasModelItems"
+            :loading="capabilitiesLoading && !hasModelItems"
+          >
+            <span class="min-w-0 truncate">{{ modelLabel }}</span>
           </UButton>
-        </UDropdownMenu>
+
+          <template #content>
+            <div class="w-80 max-w-[calc(100vw-2rem)] overflow-hidden rounded-md bg-default text-sm">
+              <div class="border-b border-default p-2">
+                <UInput
+                  v-model="modelSearch"
+                  autofocus
+                  icon="i-lucide-search"
+                  placeholder="Search models..."
+                  size="sm"
+                  variant="none"
+                />
+              </div>
+
+              <div v-if="!filteredModelGroups.length" class="px-3 py-6 text-center text-xs text-muted">
+                No matching models
+              </div>
+
+              <div v-else class="max-h-72 overflow-y-auto p-1">
+                <div v-for="group in filteredModelGroups" :key="group.providerLabel" class="py-1 first:pt-0">
+                  <div class="px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted">
+                    {{ group.providerLabel }}
+                  </div>
+                  <button
+                    v-for="item in group.items"
+                    :key="`${item.provider || 'auto'}:${item.model.id}`"
+                    type="button"
+                    class="flex w-full items-center justify-between gap-3 rounded-md px-2 py-1.5 text-left text-xs text-default hover:bg-elevated/60 hover:text-highlighted"
+                    @click="selectModel(item)"
+                  >
+                    <span class="min-w-0">
+                      <span class="block truncate">{{ item.label }}</span>
+                    </span>
+                    <UIcon
+                      v-if="item.model.id === selectedModel && item.provider === selectedProvider"
+                      name="i-lucide-check"
+                      class="size-4 shrink-0 text-muted"
+                    />
+                  </button>
+                </div>
+              </div>
+            </div>
+          </template>
+        </UPopover>
 
         <UDropdownMenu :items="reasoningItems" :disabled="capabilitiesLoading || !reasoningItems.length" size="sm" :content="{ align: 'start', side: 'top', sideOffset: 8 }">
           <UButton aria-label="Reasoning effort" icon="i-lucide-brain" trailing-icon="i-lucide-chevron-down" color="neutral" variant="ghost" size="sm" class="shrink-0" :disabled="capabilitiesLoading || !reasoningItems.length" :loading="capabilitiesLoading && !reasoningItems.length">

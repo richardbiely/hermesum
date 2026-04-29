@@ -20,7 +20,7 @@ const api = useHermesApi()
 const sessionCache = useWebChatSessionCache(api)
 const composer = useChatComposerCapabilities()
 const providerUsage = useProviderUsage(
-  computed(() => composer.capabilities.value?.provider || null),
+  composer.selectedProvider,
   composer.selectedModel
 )
 const activeChatRuns = useActiveChatRuns()
@@ -119,7 +119,8 @@ const activeRunAssistantMessageId = computed(() => {
 })
 const showRunActivityIndicator = computed(() => Boolean(currentActivityLabel.value))
 const promptContextUsage = computed(() => {
-  const model = composer.models.value.find(model => model.id === composer.selectedModel.value)
+  const model = composer.models.value.find(model => model.id === composer.selectedModel.value && (!composer.selectedProvider.value || model.provider === composer.selectedProvider.value))
+    || composer.models.value.find(model => model.id === composer.selectedModel.value)
   if (!model?.contextWindowTokens || !model.autoCompressTokens) return null
 
   return {
@@ -476,6 +477,7 @@ async function startRunForLocalMessage(
     const run = await api.startRun(text, {
       sessionId: sessionId.value,
       model: composer.selectedModel.value,
+      provider: composer.selectedProvider.value,
       reasoningEffort: composer.selectedReasoningEffort.value,
       workspace: context.selectedWorkspace.value,
       attachments: attachmentIds,
@@ -573,6 +575,7 @@ async function regenerateResponse(message: WebChatMessage) {
     const run = await api.startRun(content, {
       sessionId: sessionId.value,
       model: composer.selectedModel.value,
+      provider: composer.selectedProvider.value,
       reasoningEffort: composer.selectedReasoningEffort.value,
       workspace: context.selectedWorkspace.value,
       attachments: attachmentIdsForMessage(userMessage),
@@ -968,6 +971,7 @@ onBeforeUnmount(() => {
                 :attachments-loading="context.attachmentsLoading.value"
                 :models="composer.models.value"
                 :selected-model="composer.selectedModel.value"
+                :selected-provider="composer.selectedProvider.value"
                 :selected-reasoning-effort="composer.selectedReasoningEffort.value"
                 :capabilities-loading="composer.capabilitiesLoading.value"
                 :slash-commands="slashCommands.filteredCommands.value"
@@ -981,6 +985,7 @@ onBeforeUnmount(() => {
                 @voice-text="appendVoiceText"
                 @voice-error="showVoiceError"
                 @update-selected-model="composer.selectedModel.value = $event"
+                @update-selected-provider="composer.selectedProvider.value = $event"
                 @update-selected-reasoning-effort="composer.selectedReasoningEffort.value = $event"
                 @select-slash-command="selectSlashCommand"
                 @highlight-slash-command="slashCommands.highlightedIndex.value = $event"

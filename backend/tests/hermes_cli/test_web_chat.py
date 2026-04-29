@@ -27,6 +27,7 @@ def test_lists_sessions_for_chat_sidebar(client):
         "preview": "Hello from the first session",
         "source": "cli",
         "model": "test-model",
+        "provider": None,
         "reasoningEffort": None,
         "workspace": None,
         "pinned": False,

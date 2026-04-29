@@ -139,6 +139,7 @@ class WebChatSession(BaseModel):
     preview: str
     source: str | None
     model: str | None
+    provider: str | None = None
     reasoningEffort: str | None = None
     workspace: str | None = None
     pinned: bool = False
@@ -154,11 +155,14 @@ class WebChatModelCapability(BaseModel):
     defaultReasoningEffort: str | None = None
     contextWindowTokens: int | None = None
     autoCompressTokens: int | None = None
+    provider: str | None = None
+    providerLabel: str | None = None
 
 
 class WebChatCapabilitiesResponse(BaseModel):
     provider: str
     defaultModel: str | None
+    defaultProvider: str | None = None
     models: list[WebChatModelCapability]
 
 

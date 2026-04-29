@@ -22,7 +22,9 @@ def test_returns_chat_capabilities(client, monkeypatch):
     from hermes_cli.web_chat_modules import capabilities
 
     monkeypatch.setattr(web_chat, "_active_provider_id", lambda: "test-provider")
+    monkeypatch.setattr(capabilities, "active_provider_id", lambda: "test-provider")
     monkeypatch.setattr(web_chat, "_available_model_ids", lambda: ["gpt-5.4", "claude-sonnet-4-6"])
+    monkeypatch.setattr(capabilities, "authenticated_model_capabilities", lambda: [])
     monkeypatch.setattr(capabilities, "model_context_window_tokens", lambda model_id: 300000 if model_id == "gpt-5.4" else 200000)
     monkeypatch.setattr(capabilities, "_compression_threshold", lambda: 0.4)
 
@@ -32,6 +34,7 @@ def test_returns_chat_capabilities(client, monkeypatch):
     data = response.json()
     assert data["provider"] == "test-provider"
     assert data["defaultModel"] == "gpt-5.4"
+    assert data["defaultProvider"] == "test-provider"
     assert data["models"] == [
         {
             "id": "gpt-5.4",
@@ -40,6 +43,8 @@ def test_returns_chat_capabilities(client, monkeypatch):
             "defaultReasoningEffort": "none",
             "contextWindowTokens": 300000,
             "autoCompressTokens": 120000,
+            "provider": "test-provider",
+            "providerLabel": "Test Provider",
         },
         {
             "id": "claude-sonnet-4-6",
@@ -48,6 +53,8 @@ def test_returns_chat_capabilities(client, monkeypatch):
             "defaultReasoningEffort": "medium",
             "contextWindowTokens": 200000,
             "autoCompressTokens": 80000,
+            "provider": "test-provider",
+            "providerLabel": "Test Provider",
         },
     ]
 

@@ -25,6 +25,7 @@ from .models import (
     WebChatPrompt,
     WebChatWorkspaceChanges,
 )
+from .sessions import session_provider
 
 RunExecutor = Callable[["RunContext", Callable[[dict[str, Any]], None]], str]
 MESSAGE_ITEMS_FIELD = "codex_message_items"
@@ -157,7 +158,10 @@ class RunManager:
                     detail="Message was already submitted. Refresh the chat before retrying.",
                 )
 
+        effective_provider = request.provider or session_provider(session)
         model_config_updates = {"reasoningEffort": effective_reasoning_effort}
+        if effective_provider:
+            model_config_updates["provider"] = effective_provider
         if workspace_provided or workspace_path:
             model_config_updates["workspace"] = workspace_path
 
@@ -212,7 +216,7 @@ class RunManager:
             attachments=[attachment.id for attachment in attachments] or None,
             model=effective_model,
             reasoning_effort=effective_reasoning_effort,
-            provider=request.provider,
+            provider=effective_provider,
             enabled_toolsets=request.enabledToolsets,
             baseline_git_status=baseline_git_status,
             baseline_change_fingerprint=baseline_change_fingerprint,

@@ -5,59 +5,72 @@ function normalizeReasoningValue(value: string | null | undefined) {
   return normalized || null
 }
 
+function normalizeProviderValue(value: string | null | undefined) {
+  const normalized = value?.trim()
+  return normalized || null
+}
+
 export function useChatComposerCapabilities() {
   const api = useHermesApi()
 
   const capabilities = useState<WebChatCapabilitiesResponse | null>('chat-composer-capabilities', () => null)
   const capabilitiesLoading = useState('chat-composer-capabilities-loading', () => false)
   const selectedModel = useState<string | null>('chat-composer-selected-model', () => null)
+  const selectedProvider = useState<string | null>('chat-composer-selected-provider', () => null)
   const selectedReasoningEffort = useState<string | null>('chat-composer-selected-reasoning', () => null)
   const lastUsedModel = useState<string | null>('chat-composer-last-used-model', () => null)
+  const lastUsedProvider = useState<string | null>('chat-composer-last-used-provider', () => null)
   const lastUsedReasoningEffort = useState<string | null>('chat-composer-last-used-reasoning', () => null)
 
   const models = computed(() => capabilities.value?.models || [])
   const defaultModel = computed(() => capabilities.value?.defaultModel || models.value[0]?.id || null)
+  const defaultProvider = computed(() => capabilities.value?.defaultProvider || models.value[0]?.provider || null)
 
-  function modelCapability(modelId: string | null | undefined): WebChatModelCapability | null {
+  function modelCapability(modelId: string | null | undefined, providerId: string | null | undefined = selectedProvider.value): WebChatModelCapability | null {
     if (!modelId) return null
-    return models.value.find(model => model.id === modelId) || null
+    const normalizedProvider = normalizeProviderValue(providerId)
+    return models.value.find(model => model.id === modelId && (!normalizedProvider || model.provider === normalizedProvider))
+      || models.value.find(model => model.id === modelId)
+      || null
   }
 
-  function supportedReasoningEfforts(modelId: string | null | undefined) {
-    return modelCapability(modelId)?.reasoningEfforts || []
+  function supportedReasoningEfforts(modelId: string | null | undefined, providerId: string | null | undefined = selectedProvider.value) {
+    return modelCapability(modelId, providerId)?.reasoningEfforts || []
   }
 
-  function defaultReasoningForModel(modelId: string | null | undefined) {
-    const capability = modelCapability(modelId)
+  function defaultReasoningForModel(modelId: string | null | undefined, providerId: string | null | undefined = selectedProvider.value) {
+    const capability = modelCapability(modelId, providerId)
     if (!capability) return null
     if (capability.defaultReasoningEffort) return capability.defaultReasoningEffort
     if (capability.reasoningEfforts.includes('medium')) return 'medium'
     return capability.reasoningEfforts[0] || null
   }
 
-  function normalizeModel(modelId: string | null | undefined) {
-    if (modelId && modelCapability(modelId)) return modelId
-    return defaultModel.value
+  function normalizeModel(modelId: string | null | undefined, providerId: string | null | undefined = selectedProvider.value) {
+    const capability = modelCapability(modelId, providerId)
+    if (capability) return capability
+    return modelCapability(defaultModel.value, defaultProvider.value)
   }
 
-  function reconcileReasoning(modelId: string | null | undefined, reasoningEffort: string | null | undefined) {
-    const supported = supportedReasoningEfforts(modelId)
+  function reconcileReasoning(modelId: string | null | undefined, reasoningEffort: string | null | undefined, providerId: string | null | undefined = selectedProvider.value) {
+    const supported = supportedReasoningEfforts(modelId, providerId)
     if (!supported.length) return null
 
     const normalized = normalizeReasoningValue(reasoningEffort)
     if (normalized && supported.includes(normalized)) return normalized
 
-    return defaultReasoningForModel(modelId)
+    return defaultReasoningForModel(modelId, providerId)
   }
 
-  function setSelection(modelId: string | null | undefined, reasoningEffort: string | null | undefined) {
-    const resolvedModel = normalizeModel(modelId)
-    selectedModel.value = resolvedModel
-    selectedReasoningEffort.value = reconcileReasoning(resolvedModel, reasoningEffort)
+  function setSelection(modelId: string | null | undefined, reasoningEffort: string | null | undefined, providerId: string | null | undefined = selectedProvider.value) {
+    const capability = normalizeModel(modelId, providerId)
+    selectedModel.value = capability?.id || null
+    selectedProvider.value = capability?.provider || normalizeProviderValue(providerId)
+    selectedReasoningEffort.value = reconcileReasoning(selectedModel.value, reasoningEffort, selectedProvider.value)
   }
 
   async function ensureCapabilities() {
-    if (capabilities.value || capabilitiesLoading.value) return
+    if (capabilitiesLoading.value) return
 
     capabilitiesLoading.value = true
     try {
@@ -69,33 +82,37 @@ export function useChatComposerCapabilities() {
 
   async function initializeForNewChat() {
     await ensureCapabilities()
-    setSelection(lastUsedModel.value, lastUsedReasoningEffort.value)
+    setSelection(lastUsedModel.value, lastUsedReasoningEffort.value, lastUsedProvider.value)
   }
 
   async function initializeForSession(session: WebChatSession | null | undefined) {
     await ensureCapabilities()
     setSelection(
       session?.model || lastUsedModel.value,
-      normalizeReasoningValue(session?.reasoningEffort) || lastUsedReasoningEffort.value
+      normalizeReasoningValue(session?.reasoningEffort) || lastUsedReasoningEffort.value,
+      session?.provider || lastUsedProvider.value
     )
   }
 
   function rememberLastUsedSelection() {
     lastUsedModel.value = selectedModel.value
+    lastUsedProvider.value = selectedProvider.value
     lastUsedReasoningEffort.value = selectedReasoningEffort.value
   }
 
-  watch(selectedModel, (modelId) => {
+  watch([selectedModel, selectedProvider], ([modelId, providerId]) => {
     if (!capabilities.value) return
-    selectedReasoningEffort.value = reconcileReasoning(modelId, selectedReasoningEffort.value)
+    selectedReasoningEffort.value = reconcileReasoning(modelId, selectedReasoningEffort.value, providerId)
   })
 
   return {
     capabilities,
     capabilitiesLoading,
     defaultModel,
+    defaultProvider,
     models,
     selectedModel,
+    selectedProvider,
     selectedReasoningEffort,
     supportedReasoningEfforts,
     ensureCapabilities,

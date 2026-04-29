@@ -121,6 +121,7 @@ export type WebChatSession = {
   preview: string
   source: string | null
   model: string | null
+  provider: string | null
   reasoningEffort: string | null
   workspace: string | null
   pinned: boolean
@@ -136,11 +137,14 @@ export type WebChatModelCapability = {
   defaultReasoningEffort: string | null
   contextWindowTokens?: number | null
   autoCompressTokens?: number | null
+  provider?: string | null
+  providerLabel?: string | null
 }
 
 export type WebChatCapabilitiesResponse = {
   provider: string
   defaultModel: string | null
+  defaultProvider?: string | null
   models: WebChatModelCapability[]
 }
 

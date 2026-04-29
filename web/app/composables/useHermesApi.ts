@@ -150,6 +150,7 @@ export function useHermesApi() {
       options: {
         sessionId?: string
         model?: string | null
+        provider?: string | null
         reasoningEffort?: string | null
         workspace?: string | null
         profile?: string | null
@@ -164,6 +165,7 @@ export function useHermesApi() {
         clientMessageId: options.clientMessageId,
         sessionId: options.sessionId,
         model: options.model,
+        provider: options.provider,
         reasoningEffort: options.reasoningEffort,
         workspace: options.workspace,
         profile: options.profile,
