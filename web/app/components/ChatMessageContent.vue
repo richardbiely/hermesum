@@ -66,6 +66,17 @@ function isLatestChangePart(message: WebChatMessage, part: WebChatPart) {
   return messagePartKey(message, part) === props.latestChangePartKey
 }
 
+function isPrimaryContentPart(part: WebChatPart) {
+  if (part.type === 'text') return Boolean(partText(part).trim())
+  return part.type === 'media' || part.type === 'interactive_prompt' || part.type === 'changes'
+}
+
+const showMessageFooter = computed(() => {
+  if (props.isActiveRunMessage || props.message.role === 'system') return false
+  if (props.message.role === 'assistant') return props.message.parts.some(isPrimaryContentPart)
+  return true
+})
+
 const emit = defineEmits<{
   copy: [message: WebChatMessage]
   regenerate: [message: WebChatMessage]
@@ -438,7 +449,7 @@ onBeforeUnmount(() => {
   </div>
 
   <div
-    v-if="!isActiveRunMessage"
+    v-if="showMessageFooter"
     :class="[
       'pointer-events-none absolute -bottom-6 flex w-max max-w-none flex-nowrap items-center gap-1 whitespace-nowrap text-xs leading-4 text-muted opacity-0 transition-opacity group-hover/message:pointer-events-auto group-hover/message:opacity-100 group-focus-within/message:pointer-events-auto group-focus-within/message:opacity-100',
       openTooltipKey ? 'pointer-events-auto opacity-100' : '',
