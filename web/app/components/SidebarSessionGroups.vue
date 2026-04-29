@@ -55,6 +55,13 @@ function isUnreadSession(session: WebChatSession) {
   )
 }
 
+function visibleSessions(group: SessionGroup) {
+  return [...group.sessions].sort((a, b) => {
+    return Number(b.pinned) - Number(a.pinned)
+      || Number(isUnreadSession(b)) - Number(isUnreadSession(a))
+  })
+}
+
 function openSessionMenu(session: WebChatSession) {
   contextMenuReference.value = null
   openMenuSessionId.value = session.id
@@ -178,7 +185,7 @@ function sessionActionItems(session: WebChatSession): DropdownMenuItem[] {
 
       <div v-if="group.sessions.length" class="space-y-1">
         <div
-          v-for="session in group.sessions"
+          v-for="session in visibleSessions(group)"
           :key="session.id"
           role="button"
           tabindex="0"
