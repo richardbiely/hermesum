@@ -629,9 +629,9 @@ provide('appUpdateControl', {
 
 <template>
   <UDashboardGroup :persistent="false">
-    <UDashboardSidebar collapsible :default-size="25">
+    <UDashboardSidebar collapsible :default-size="22">
       <template #header>
-        <NuxtLink to="/" class="flex h-8 w-full shrink-0 items-center px-2">
+        <NuxtLink to="/" class="flex h-8 w-full shrink-0 items-center px-0.5">
           <img
             src="/logo.svg"
             alt="Hermes Agent"
@@ -641,7 +641,7 @@ provide('appUpdateControl', {
       </template>
 
       <template #default>
-        <div class="-mt-2 space-y-2 px-2 pb-3">
+        <div class="-mt-2 space-y-2 px-0.5 pb-3">
           <USelectMenu
             :model-value="selectedProfile"
             :items="profileOptions"

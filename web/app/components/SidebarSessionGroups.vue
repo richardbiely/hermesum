@@ -145,9 +145,9 @@ function sessionActionItems(session: WebChatSession): DropdownMenuItem[] {
 </script>
 
 <template>
-  <nav class="space-y-4 px-2" aria-label="Chat sessions by workspace">
+  <nav class="space-y-4 px-0.5" aria-label="Chat sessions by workspace">
     <section v-for="group in groups" :key="group.id" class="space-y-1">
-      <div class="group/workspace flex h-7 min-w-0 items-center justify-between gap-2 px-2 text-xs font-medium uppercase tracking-wide text-muted">
+      <div class="group/workspace flex h-7 min-w-0 items-center justify-between gap-2 px-0.5 text-xs font-medium uppercase tracking-wide text-muted">
         <span class="flex min-w-0 items-center gap-1.5 truncate" :title="group.path || undefined">
           <UIcon
             name="i-lucide-folder"
@@ -189,7 +189,7 @@ function sessionActionItems(session: WebChatSession): DropdownMenuItem[] {
           :key="session.id"
           role="button"
           tabindex="0"
-          class="group relative flex h-8 w-full min-w-0 cursor-pointer items-center gap-1 rounded-md px-2 text-left text-sm outline-none hover:bg-elevated focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-within:bg-elevated"
+          class="group relative flex h-8 w-full min-w-0 cursor-pointer items-center gap-1 rounded-md px-0.5 text-left text-sm outline-none hover:bg-elevated focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-within:bg-elevated"
           :class="[
             isActiveSession(session) ? 'bg-elevated text-highlighted' : 'text-default',
             isUnreadSession(session) ? 'font-bold text-black dark:text-white' : 'font-normal'
@@ -202,7 +202,7 @@ function sessionActionItems(session: WebChatSession): DropdownMenuItem[] {
           @dblclick.stop.prevent="isActiveSession(session) && renameSession(session)"
           @contextmenu.prevent="openSessionContextMenu(session, $event)"
         >
-          <span v-if="isUnreadSession(session)" class="absolute inset-y-0 left-2.5 flex items-center" aria-hidden="true">
+          <span v-if="isUnreadSession(session)" class="absolute inset-y-0 left-1 flex items-center" aria-hidden="true">
             <span class="block size-1.5 rounded-full bg-primary" />
           </span>
           <span
@@ -258,7 +258,7 @@ function sessionActionItems(session: WebChatSession): DropdownMenuItem[] {
         </div>
       </div>
 
-      <p v-else class="px-2 text-xs text-muted">
+      <p v-else class="px-0.5 text-xs text-muted">
         No chats yet
       </p>
     </section>
