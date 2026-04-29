@@ -197,12 +197,6 @@ async function indexSessionsForSearch() {
   }))
 }
 
-async function startNewChat() {
-  requestedSessionId.value = null
-  newChatRequest.openNewChat(null)
-  await router.push('/')
-}
-
 async function startWorkspaceChat(workspacePath: string) {
   requestedSessionId.value = null
   newChatRequest.openNewChat(workspacePath)
@@ -719,34 +713,30 @@ provide('appUpdateControl', {
       </template>
 
       <template #default>
-        <div class="-mt-2 space-y-2 px-0.5 pb-3">
-          <div class="grid grid-cols-2 gap-1.5">
-            <UButton
-              block
-              color="neutral"
-              variant="soft"
-              size="xs"
-              icon="i-lucide-square-pen"
-              label="Chat"
-              @click="startNewChat"
-            />
-            <UButton
-              block
-              color="neutral"
-              variant="soft"
-              size="xs"
-              icon="i-lucide-folder-plus"
-              label="Workspace"
-              @click="beginCreateWorkspace"
-            />
-          </div>
-
+        <div class="-mt-2 px-0.5 pb-1">
           <UDashboardSearchButton
             label="Search chats"
             variant="soft"
             size="xs"
             class="w-full justify-start"
           />
+        </div>
+
+        <div class="mb-1 flex h-7 items-center justify-between px-2 text-sm font-medium text-muted">
+          <span>Workspaces</span>
+          <UTooltip text="New workspace">
+            <UButton
+              aria-label="New workspace"
+              icon="i-lucide-folder-plus"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              square
+              class="mr-1 size-5"
+              :ui="{ leadingIcon: 'size-3.5' }"
+              @click="beginCreateWorkspace"
+            />
+          </UTooltip>
         </div>
 
         <SidebarSessionGroups
