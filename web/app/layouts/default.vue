@@ -12,6 +12,7 @@ const router = useRouter()
 const toast = useToast()
 const activeChatRuns = useActiveChatRuns()
 const context = useChatComposerContext()
+const newChatRequest = useNewChatRequest()
 
 const { data, refresh } = await useAsyncData('web-chat-sessions', () => api.listSessions())
 const { data: profilesData, pending: profilesPending } = await useAsyncData('web-chat-profiles', () => api.getProfiles())
@@ -127,12 +128,14 @@ function sessionTitle(session: WebChatSession) {
 }
 
 async function startNewChat() {
-  context.selectWorkspace(null)
+  requestedSessionId.value = null
+  newChatRequest.openNewChat(null)
   await router.push('/')
 }
 
 async function startWorkspaceChat(workspacePath: string) {
-  context.selectWorkspace(workspacePath)
+  requestedSessionId.value = null
+  newChatRequest.openNewChat(workspacePath)
   await router.push('/')
 }
 

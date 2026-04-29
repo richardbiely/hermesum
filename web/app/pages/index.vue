@@ -17,10 +17,25 @@ const providerUsage = useProviderUsage(
 )
 const activeChatRuns = useActiveChatRuns()
 const context = useChatComposerContext()
+const newChatRequest = useNewChatRequest()
 const toast = useToast()
 const slashCommands = useSlashCommands({ input })
 
 await Promise.all([composer.initializeForNewChat(), context.initialize()])
+
+watch(
+  () => newChatRequest.request.value,
+  (request) => {
+    if (!request.id || request.consumed) return
+
+    context.selectWorkspace(request.workspace)
+    context.clearAttachments()
+    clearDraft()
+    error.value = undefined
+    newChatRequest.markConsumed(request.id)
+  },
+  { immediate: true }
+)
 
 function appendVoiceText(text: string) {
   input.value = input.value ? `${input.value} ${text}` : text
