@@ -30,6 +30,7 @@ const languageImports: Record<string, LanguageImport> = {
   sql: () => import('shiki/dist/langs/sql.mjs'),
   swift: () => import('shiki/dist/langs/swift.mjs'),
   toml: () => import('shiki/dist/langs/toml.mjs'),
+  vue: () => import('shiki/dist/langs/vue.mjs'),
   xml: () => import('shiki/dist/langs/xml.mjs')
 }
 

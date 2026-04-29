@@ -7,6 +7,14 @@ body,
   min-height: 100%;
 }
 
+.chat-file-preview-code .shiki span {
+  color: var(--shiki-light);
+  background-color: var(--shiki-light-bg);
+  font-style: var(--shiki-light-font-style);
+  font-weight: var(--shiki-light-font-weight);
+  text-decoration: var(--shiki-light-text-decoration);
+}
+
 html.dark .shiki span {
   color: var(--shiki-dark) !important;
   background-color: var(--shiki-dark-bg) !important;
@@ -89,11 +97,17 @@ button.chat-preview-path {
 
 .chat-file-preview-code :where(pre) {
   counter-reset: chat-file-preview-line;
+  white-space: normal;
+}
+
+.chat-file-preview-code :where(code) {
+  white-space: normal;
 }
 
 .chat-file-preview-code :where(.line) {
   display: block;
   min-width: max-content;
+  white-space: pre;
 }
 
 .chat-file-preview-code :where(.line)::before {

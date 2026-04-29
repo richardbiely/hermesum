@@ -42,15 +42,18 @@ const PREVIEWABLE_EXTENSIONS = new Set([
   'zsh'
 ])
 
-export const LOCAL_PATH_PATTERN = /(?:^|[\s("'`[{])((?:\.?\.?\/|[\w@.-]+\/|\/)[^\s`'"<>]+)(?=[.,:;!?)]?["'`)}\]]?(?:\s|$))/g
+export const LOCAL_PATH_PATTERN = /(?:^|[\s("'`[{])((?:(?:\.?\.?\/|[\w@.-]+\/|\/)[^\s`'"<>]+)|(?:[\w@.-]+\.[A-Za-z0-9]+(?::\d+(?::\d+)?|\(\d+(?:,\d+)?\))?))(?=[.,:;!?)]?["'`)}\]]?(?:\s|$))/g
 
 export function normalizePreviewPathCandidate(value: string) {
   let candidate = value.trim()
+  candidate = stripLocationSuffix(candidate)
   candidate = stripTrailingPunctuation(candidate)
   candidate = stripMatchingWrapper(candidate, '`')
   candidate = stripMatchingWrapper(candidate, '"')
   candidate = stripMatchingWrapper(candidate, "'")
+  candidate = stripLocationSuffix(candidate)
   candidate = stripTrailingPunctuation(candidate)
+  candidate = stripLocationSuffix(candidate)
   return candidate
 }
 
@@ -89,6 +92,10 @@ function stripMatchingWrapper(value: string, wrapper: string) {
 
 function stripTrailingPunctuation(value: string) {
   return value.replace(/[.,:;!?\])}]+$/, '')
+}
+
+function stripLocationSuffix(value: string) {
+  return value.replace(/^(.+\.[A-Za-z0-9]+)(?::\d+(?::\d+)?|\(\d+(?:,\d+)?\)?)$/, '$1')
 }
 
 function extensionFor(filename: string) {

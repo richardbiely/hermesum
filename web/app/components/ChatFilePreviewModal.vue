@@ -17,15 +17,51 @@ const meta = computed(() => {
   return `${props.preview.mediaType} · ${formatBytes(props.preview.size)}${props.preview.truncated ? ' · truncated' : ''}`
 })
 const markdownPlugins = [createMarkdownHighlightPlugin()]
-const codeMarkdown = computed(() => {
-  if (!props.preview) return ''
-  return fencedCodeBlock(props.preview.content || '', props.preview.language || '')
-})
+const highlightedCodeHtml = ref('')
+let highlightRequestId = 0
 
-function fencedCodeBlock(content: string, language: string) {
-  const longestFence = Math.max(2, ...Array.from(content.matchAll(/`+/g), match => match[0].length))
-  const fence = '`'.repeat(longestFence + 1)
-  return `${fence}${language}\n${content}\n${fence}`
+watch(
+  () => ({
+    content: props.preview?.content || '',
+    isCodePreview: isCodePreview.value,
+    language: props.preview?.language || 'text'
+  }),
+  async ({ content, isCodePreview, language }) => {
+    const requestId = ++highlightRequestId
+    highlightedCodeHtml.value = ''
+
+    if (!isCodePreview) return
+
+    const html = await highlightPreviewCode(content, language)
+    if (requestId === highlightRequestId) highlightedCodeHtml.value = html
+  },
+  { immediate: true }
+)
+
+async function highlightPreviewCode(content: string, language: string) {
+  try {
+    const { codeToHtml } = await import('shiki/bundle/web')
+    return await codeToHtml(content, {
+      lang: language || 'text',
+      themes: {
+        light: 'material-theme-lighter',
+        dark: 'material-theme-palenight'
+      },
+      defaultColor: false
+    })
+  } catch (error) {
+    console.error('Could not highlight file preview', error)
+    return `<pre class="shiki" tabindex="0"><code>${escapeHtml(content)}</code></pre>`
+  }
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
 }
 
 function formatBytes(bytes: number) {
@@ -85,11 +121,10 @@ function formatBytes(bytes: number) {
             class="chat-file-preview-markdown *:first:mt-0 *:last:mb-0"
           />
 
-          <Comark
+          <div
             v-else-if="preview && isCodePreview"
-            :markdown="codeMarkdown"
-            :plugins="markdownPlugins"
             class="chat-file-preview-code *:first:mt-0 *:last:mb-0"
+            v-html="highlightedCodeHtml"
           />
 
           <pre

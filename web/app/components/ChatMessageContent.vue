@@ -54,7 +54,7 @@ const props = defineProps<{
   latestChangePartKey: string | null
 }>()
 
-const shouldPausePreviewEnhancement = computed(() => props.isRunning && props.message.role === 'assistant')
+const shouldPausePreviewEnhancement = computed(() => props.isRunning && props.isActiveRunMessage && props.message.role === 'assistant')
 const previewEnhancementSource = computed(() => [
   props.message.id,
   props.workspace,

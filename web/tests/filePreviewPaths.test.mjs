@@ -38,9 +38,12 @@ test('rejects urls, commands, snippets, and ambiguous bare words', () => {
   }
 })
 
-test('normalizes wrappers and trailing punctuation', () => {
+test('normalizes wrappers, trailing punctuation, and editor locations', () => {
   assert.equal(normalizePreviewPathCandidate('`.hermes/plans/example.md`,'), '.hermes/plans/example.md')
   assert.equal(normalizePreviewPathCandidate('"src/foo.ts"'), 'src/foo.ts')
+  assert.equal(normalizePreviewPathCandidate('web/app/components/Example.vue:12'), 'web/app/components/Example.vue')
+  assert.equal(normalizePreviewPathCandidate('web/app/components/Example.vue:12:3'), 'web/app/components/Example.vue')
+  assert.equal(normalizePreviewPathCandidate('web/app/components/Example.vue(12,3)'), 'web/app/components/Example.vue')
 })
 
 test('plain text pattern finds strong local paths without hardcoded prefixes', () => {
@@ -49,8 +52,20 @@ test('plain text pattern finds strong local paths without hardcoded prefixes', (
   assert.deepEqual(matches, ['config/app.yaml', 'whatever/custom/path/file.vue'])
 })
 
+test('plain text pattern finds bare file-like names', () => {
+  const text = 'Open ChatFilePreviewModal.vue and README.md, but ignore README and example.com.'
+  const matches = Array.from(text.matchAll(LOCAL_PATH_PATTERN), match => normalizePreviewPathCandidate(match[1]))
+  assert.deepEqual(matches.filter(isPreviewablePathCandidate), ['ChatFilePreviewModal.vue', 'README.md'])
+})
+
 test('plain text pattern finds quoted local paths', () => {
   const text = 'Plan is in ".hermes/plans/2026-04-28_194818-payment-options-section.md" and should be clickable.'
   const matches = Array.from(text.matchAll(LOCAL_PATH_PATTERN), match => normalizePreviewPathCandidate(match[1]))
   assert.deepEqual(matches, ['.hermes/plans/2026-04-28_194818-payment-options-section.md'])
+})
+
+test('plain text pattern normalizes editor locations on paths', () => {
+  const text = 'Fix is in web/app/components/Example.vue:12 and web/app/utils/filePreviewPaths.ts(94,1).'
+  const matches = Array.from(text.matchAll(LOCAL_PATH_PATTERN), match => normalizePreviewPathCandidate(match[1]))
+  assert.deepEqual(matches, ['web/app/components/Example.vue', 'web/app/utils/filePreviewPaths.ts'])
 })
