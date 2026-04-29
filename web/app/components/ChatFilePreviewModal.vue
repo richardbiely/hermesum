@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { WebChatFilePreview } from '~/types/web-chat'
-import { createMarkdownHighlightPlugin } from '~/utils/markdownHighlight'
 
 const open = defineModel<boolean>('open', { required: true })
 const props = defineProps<{
@@ -16,9 +15,11 @@ const meta = computed(() => {
   if (!props.preview) return null
   return `${props.preview.mediaType} · ${formatBytes(props.preview.size)}${props.preview.truncated ? ' · truncated' : ''}`
 })
-const markdownPlugins = [createMarkdownHighlightPlugin()]
+const markdownPreviewRoot = ref<HTMLElement | null>(null)
 const highlightedCodeHtml = ref('')
 let highlightRequestId = 0
+let markdownHighlightObserver: MutationObserver | null = null
+let markdownHighlightFrame: number | null = null
 
 watch(
   () => ({
@@ -40,20 +41,100 @@ watch(
 
 async function highlightPreviewCode(content: string, language: string) {
   try {
-    const { codeToHtml } = await import('shiki/bundle/web')
-    return await codeToHtml(content, {
-      lang: language || 'text',
-      themes: {
-        light: 'material-theme-lighter',
-        dark: 'material-theme-palenight'
-      },
-      defaultColor: false
-    })
+    return await renderShikiHtml(content, language)
   } catch (error) {
     console.error('Could not highlight file preview', error)
     return `<pre class="shiki" tabindex="0"><code>${escapeHtml(content)}</code></pre>`
   }
 }
+
+async function renderShikiHtml(content: string, language: string) {
+  const { codeToHtml } = await import('shiki/bundle/web')
+  return await codeToHtml(content, {
+    lang: normalizeLanguage(language || 'text'),
+    themes: {
+      light: 'material-theme-lighter',
+      dark: 'material-theme-palenight'
+    },
+    defaultColor: false
+  })
+}
+
+function normalizeLanguage(language: string) {
+  const value = language.trim().toLowerCase()
+  const aliases: Record<string, string> = {
+    cs: 'csharp',
+    js: 'javascript',
+    md: 'markdown',
+    py: 'python',
+    rs: 'rust',
+    sh: 'bash',
+    ts: 'typescript',
+    yml: 'yaml'
+  }
+  return aliases[value] || value || 'text'
+}
+
+function scheduleMarkdownHighlight() {
+  if (!isMarkdown.value) return
+  if (markdownHighlightFrame !== null) cancelAnimationFrame(markdownHighlightFrame)
+  markdownHighlightFrame = requestAnimationFrame(() => {
+    markdownHighlightFrame = null
+    void highlightMarkdownCodeBlocks()
+  })
+}
+
+async function highlightMarkdownCodeBlocks() {
+  const root = markdownPreviewRoot.value
+  if (!root || !isMarkdown.value) return
+
+  const codeBlocks = [...root.querySelectorAll<HTMLElement>('pre > code[class*="language-"]')]
+    .filter(code => !code.closest('pre')?.dataset.shikiHighlighted)
+
+  await Promise.all(codeBlocks.map(highlightMarkdownCodeBlock))
+}
+
+async function highlightMarkdownCodeBlock(code: HTMLElement) {
+  const pre = code.closest('pre')
+  if (!pre) return
+
+  const language = getCodeBlockLanguage(code)
+  pre.dataset.shikiHighlighted = 'true'
+
+  try {
+    const html = await renderShikiHtml(code.textContent || '', language)
+    pre.outerHTML = html
+  } catch (error) {
+    console.error(`Could not highlight markdown code block (${language})`, error)
+    delete pre.dataset.shikiHighlighted
+  }
+}
+
+function getCodeBlockLanguage(code: HTMLElement) {
+  const languageClass = [...code.classList].find(className => className.startsWith('language-'))
+  return languageClass?.replace(/^language-/, '') || 'text'
+}
+
+function observeMarkdownPreviewRoot(root: HTMLElement | null) {
+  markdownHighlightObserver?.disconnect()
+  markdownHighlightObserver = null
+
+  if (!root) return
+  markdownHighlightObserver = new MutationObserver(scheduleMarkdownHighlight)
+  markdownHighlightObserver.observe(root, { childList: true, subtree: true })
+  scheduleMarkdownHighlight()
+}
+
+watch(markdownPreviewRoot, observeMarkdownPreviewRoot)
+
+onMounted(() => observeMarkdownPreviewRoot(markdownPreviewRoot.value))
+
+onBeforeUnmount(() => {
+  markdownHighlightObserver?.disconnect()
+  if (markdownHighlightFrame !== null) cancelAnimationFrame(markdownHighlightFrame)
+})
+
+watch(() => props.preview?.content, () => nextTick(scheduleMarkdownHighlight))
 
 function escapeHtml(value: string) {
   return value
@@ -114,12 +195,12 @@ function formatBytes(bytes: number) {
             <span>{{ preview.reason || 'File cannot be previewed.' }}</span>
           </div>
 
-          <Comark
-            v-else-if="preview && isMarkdown"
-            :markdown="preview.content || ''"
-            :plugins="markdownPlugins"
-            class="chat-file-preview-markdown *:first:mt-0 *:last:mb-0"
-          />
+          <div v-else-if="preview && isMarkdown" ref="markdownPreviewRoot">
+            <Comark
+              :markdown="preview.content || ''"
+              class="chat-file-preview-markdown *:first:mt-0 *:last:mb-0"
+            />
+          </div>
 
           <div
             v-else-if="preview && isCodePreview"
