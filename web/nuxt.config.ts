@@ -1,5 +1,10 @@
+declare const process: {
+  env: Record<string, string | undefined>
+}
+
 const apiOrigin = process.env.HERMES_API_ORIGIN || 'http://127.0.0.1:9119'
 const apiProxyTarget = `${apiOrigin.replace(/\/$/, '')}/api`
+const hermesSessionToken = process.env.NUXT_PUBLIC_HERMES_SESSION_TOKEN || ''
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
@@ -9,7 +14,7 @@ export default defineNuxtConfig({
   ssr: false,
   runtimeConfig: {
     public: {
-      hermesSessionToken: process.env.NUXT_PUBLIC_HERMES_SESSION_TOKEN || ''
+      hermesSessionToken
     }
   },
   app: {
@@ -37,7 +42,10 @@ export default defineNuxtConfig({
     devProxy: {
       '/api': {
         target: apiProxyTarget,
-        changeOrigin: true
+        changeOrigin: true,
+        headers: hermesSessionToken
+          ? { 'X-Hermes-Session-Token': hermesSessionToken }
+          : undefined
       }
     }
   },
