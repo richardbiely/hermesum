@@ -5,7 +5,7 @@ const props = defineProps<{
   taskPlan: WebChatTaskPlan
 }>()
 
-const expanded = ref(true)
+const expanded = ref(false)
 const listRef = ref<HTMLElement | null>(null)
 
 const statusMeta: Record<WebChatTaskPlanItemStatus, { icon: string, class: string, label: string }> = {

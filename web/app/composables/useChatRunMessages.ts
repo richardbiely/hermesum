@@ -100,6 +100,8 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
     for (let messageIndex = messages.value.length - 1; messageIndex >= 0; messageIndex -= 1) {
       const message = messages.value[messageIndex]
       if (!message) continue
+      if (message.role === 'user') return null
+
       for (let partIndex = message.parts.length - 1; partIndex >= 0; partIndex -= 1) {
         const taskPlan = message.parts[partIndex]?.taskPlan
         if (taskPlan?.items.length) return taskPlan
