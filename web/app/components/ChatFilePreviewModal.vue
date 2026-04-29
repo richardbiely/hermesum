@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import highlight from '@comark/nuxt/plugins/highlight'
 import type { WebChatFilePreview } from '~/types/web-chat'
+import { createMarkdownHighlightPlugin } from '~/utils/markdownHighlight'
 
 const open = defineModel<boolean>('open', { required: true })
 const props = defineProps<{
@@ -16,7 +16,7 @@ const meta = computed(() => {
   if (!props.preview) return null
   return `${props.preview.mediaType} · ${formatBytes(props.preview.size)}${props.preview.truncated ? ' · truncated' : ''}`
 })
-const markdownPlugins = [highlight()]
+const markdownPlugins = [createMarkdownHighlightPlugin()]
 const codeMarkdown = computed(() => {
   if (!props.preview) return ''
   return fencedCodeBlock(props.preview.content || '', props.preview.language || '')

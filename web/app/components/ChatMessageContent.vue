@@ -1,8 +1,8 @@
 <script setup lang="ts">
-import highlight from '@comark/nuxt/plugins/highlight'
 import type { WebChatFilePreview, WebChatMessage, WebChatPart } from '~/types/web-chat'
 import { isPreviewablePathCandidate, LOCAL_PATH_PATTERN, normalizePreviewPathCandidate } from '~/utils/filePreviewPaths'
 import { formatMessageGenerationDuration, formatMessageTimestamp, formatMessageTokenCount, groupMessageParts, messageDurationDetails, messagePartKey, messageTimestampTitle, messageTokenDetails, messageTokenTooltipNote, partText } from '~/utils/chatMessages'
+import { createMarkdownHighlightPlugin } from '~/utils/markdownHighlight'
 
 const editingText = defineModel<string>('editingText', { required: true })
 const api = useHermesApi()
@@ -40,7 +40,7 @@ const tooltipContent = { side: 'top' as const, sideOffset: 8 }
 const richTooltipUi = {
   content: 'h-auto max-w-none items-stretch rounded-md bg-elevated px-3 py-2 text-default shadow-lg ring ring-default'
 }
-const markdownPlugins = [highlight()]
+const markdownPlugins = [createMarkdownHighlightPlugin()]
 
 const props = defineProps<{
   message: WebChatMessage

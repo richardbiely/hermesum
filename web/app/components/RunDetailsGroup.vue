@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import highlight from '@comark/nuxt/plugins/highlight'
 import type { WebChatPart } from '~/types/web-chat'
 import { partText, processGroupSummary } from '~/utils/chatMessages'
+import { createMarkdownHighlightPlugin } from '~/utils/markdownHighlight'
 
 const props = defineProps<{
   parts: WebChatPart[]
@@ -9,7 +9,7 @@ const props = defineProps<{
 }>()
 
 const expanded = ref(props.expandedDefault === true)
-const markdownPlugins = [highlight()]
+const markdownPlugins = [createMarkdownHighlightPlugin()]
 
 watch(() => props.expandedDefault, value => {
   expanded.value = value === true
