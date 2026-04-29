@@ -92,7 +92,7 @@ function windowCode(window: WebChatProviderUsageWindow) {
               <div
                 v-for="window in limit.windows"
                 :key="`${limit.id}-${window.label}`"
-                class="grid grid-cols-[4rem_1fr] gap-3 rounded-md bg-muted/40 p-2"
+                class="grid grid-cols-[4rem_1fr] gap-3 rounded-md border border-default/70 bg-muted/80 p-2 dark:bg-muted/40"
               >
                 <div class="font-medium text-highlighted">{{ window.label }}</div>
                 <div class="min-w-0 space-y-1">
