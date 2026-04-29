@@ -933,7 +933,7 @@ onBeforeUnmount(() => {
     <template #footer>
       <UContainer class="mx-auto w-full max-w-[740px] pb-4 sm:pb-6">
         <div v-if="sessionError || (!isLoadingSession && !hasSession)" class="flex min-h-36 items-center justify-center">
-          <UButton to="/" color="neutral" variant="soft" icon="i-lucide-plus" label="Start a new chat" />
+          <UButton to="/" color="neutral" variant="soft" icon="i-lucide-square-pen" label="Start a new chat" />
         </div>
 
         <div v-else class="space-y-2">

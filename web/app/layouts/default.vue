@@ -669,7 +669,7 @@ provide('appUpdateControl', {
               color="neutral"
               variant="soft"
               size="xs"
-              icon="i-lucide-plus"
+              icon="i-lucide-square-pen"
               label="Chat"
               @click="startNewChat"
             />

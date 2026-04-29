@@ -25,8 +25,12 @@ const emit = defineEmits<{
   confirmSessionAction: [action: 'duplicate' | 'delete', session: WebChatSession]
 }>()
 
+const OTHER_CHATS_GROUP_ID = '__other__'
+const COLLAPSED_GROUPS_STORAGE_KEY = 'hermes-chat-collapsed-session-groups'
+
 const openMenuSessionId = ref<string | null>(null)
 const contextMenuReference = shallowRef<{ getBoundingClientRect: () => DOMRect } | null>(null)
+const collapsedGroupIds = ref(new Set<string>([OTHER_CHATS_GROUP_ID]))
 
 function sessionTitle(session: WebChatSession) {
   return session.title || session.preview || 'Untitled chat'
@@ -61,6 +65,68 @@ function visibleSessions(group: SessionGroup) {
       || Number(isUnreadSession(b)) - Number(isUnreadSession(a))
   })
 }
+
+function isGroupCollapsed(group: SessionGroup) {
+  return collapsedGroupIds.value.has(group.id)
+}
+
+function readCollapsedGroupIds() {
+  if (!import.meta.client) return new Set<string>([OTHER_CHATS_GROUP_ID])
+
+  try {
+    const raw = window.localStorage.getItem(COLLAPSED_GROUPS_STORAGE_KEY)
+    if (!raw) return new Set<string>([OTHER_CHATS_GROUP_ID])
+
+    const value = JSON.parse(raw)
+    if (!Array.isArray(value)) return new Set<string>([OTHER_CHATS_GROUP_ID])
+
+    return new Set(value.filter((id): id is string => typeof id === 'string'))
+  } catch {
+    return new Set<string>([OTHER_CHATS_GROUP_ID])
+  }
+}
+
+function saveCollapsedGroupIds(ids: Set<string>) {
+  if (!import.meta.client) return
+  window.localStorage.setItem(COLLAPSED_GROUPS_STORAGE_KEY, JSON.stringify([...ids]))
+}
+
+function toggleGroupCollapsed(group: SessionGroup) {
+  const nextCollapsedGroupIds = new Set(collapsedGroupIds.value)
+  if (nextCollapsedGroupIds.has(group.id)) {
+    nextCollapsedGroupIds.delete(group.id)
+  } else {
+    nextCollapsedGroupIds.add(group.id)
+  }
+  collapsedGroupIds.value = nextCollapsedGroupIds
+}
+
+watch(
+  collapsedGroupIds,
+  ids => saveCollapsedGroupIds(ids)
+)
+
+function expandActiveSessionGroup(activeSessionId = props.activeSessionId) {
+  if (!activeSessionId) return
+
+  const activeGroup = props.groups.find(group => group.sessions.some(session => session.id === activeSessionId))
+  if (!activeGroup || !collapsedGroupIds.value.has(activeGroup.id)) return
+
+  const nextCollapsedGroupIds = new Set(collapsedGroupIds.value)
+  nextCollapsedGroupIds.delete(activeGroup.id)
+  collapsedGroupIds.value = nextCollapsedGroupIds
+}
+
+watch(
+  () => [props.activeSessionId, props.groups] as const,
+  ([activeSessionId]) => expandActiveSessionGroup(activeSessionId),
+  { immediate: true }
+)
+
+onMounted(() => {
+  collapsedGroupIds.value = readCollapsedGroupIds()
+  expandActiveSessionGroup()
+})
 
 function openSessionMenu(session: WebChatSession) {
   contextMenuReference.value = null
@@ -147,49 +213,59 @@ function sessionActionItems(session: WebChatSession): DropdownMenuItem[] {
 <template>
   <nav class="space-y-4 px-0.5" aria-label="Chat sessions by workspace">
     <section v-for="group in groups" :key="group.id" class="space-y-1">
-      <div class="group/workspace flex h-7 min-w-0 items-center justify-between gap-2 px-0.5 text-xs font-medium uppercase tracking-wide text-muted">
+      <div
+        role="button"
+        tabindex="0"
+        class="group/workspace flex h-7 w-full min-w-0 cursor-pointer items-center justify-between gap-2 rounded-md px-1.5 text-left text-xs font-medium uppercase tracking-wide text-muted outline-none hover:bg-elevated focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1"
+        :aria-expanded="!isGroupCollapsed(group)"
+        @click="toggleGroupCollapsed(group)"
+        @keydown.enter.prevent="toggleGroupCollapsed(group)"
+        @keydown.space.prevent="toggleGroupCollapsed(group)"
+      >
         <span class="flex min-w-0 items-center gap-1.5 truncate" :title="group.path || undefined">
           <UIcon
-            name="i-lucide-folder"
+            :name="isGroupCollapsed(group) ? 'i-lucide-folder' : 'i-lucide-folder-open'"
             class="size-3.5 shrink-0 text-muted"
           />
           <span class="min-w-0 truncate">{{ group.label }}</span>
         </span>
-        <div class="flex shrink-0 items-center gap-1">
-          <div class="opacity-0 transition-opacity group-hover/workspace:opacity-100 group-focus-within/workspace:opacity-100">
-            <UTooltip v-if="group.workspace" text="Edit workspace">
-              <UButton
-                :aria-label="`Edit ${group.label}`"
-                icon="i-lucide-pencil"
-                color="neutral"
-                variant="ghost"
-                size="xs"
-                square
-                @click.stop="emit('editWorkspace', group.workspace)"
-              />
-            </UTooltip>
-          </div>
-          <UTooltip v-if="group.path" :text="`New chat`">
+        <div class="flex shrink-0 items-center gap-3.5 opacity-0 transition-opacity group-hover/workspace:opacity-100 group-focus-within/workspace:opacity-100">
+          <UTooltip v-if="group.workspace" text="Edit workspace">
             <UButton
-              :aria-label="`New chat in ${group.label}`"
-              icon="i-lucide-plus"
+              :aria-label="`Edit ${group.label}`"
+              icon="i-lucide-pencil"
               color="neutral"
               variant="ghost"
               size="xs"
               square
+              class="size-3.5"
+              :ui="{ leadingIcon: 'size-3.5' }"
+              @click.stop="emit('editWorkspace', group.workspace)"
+            />
+          </UTooltip>
+          <UTooltip v-if="group.path" :text="`New chat`">
+            <UButton
+              :aria-label="`New chat in ${group.label}`"
+              icon="i-lucide-square-pen"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              square
+              class="mr-2.5 size-3.5"
+              :ui="{ leadingIcon: 'size-3.5' }"
               @click.stop="emit('startWorkspaceChat', group.path)"
             />
           </UTooltip>
         </div>
       </div>
 
-      <div v-if="group.sessions.length" class="space-y-1">
+      <div v-if="group.sessions.length && !isGroupCollapsed(group)" class="space-y-1">
         <div
           v-for="session in visibleSessions(group)"
           :key="session.id"
           role="button"
           tabindex="0"
-          class="group relative flex h-8 w-full min-w-0 cursor-pointer items-center gap-1 rounded-md px-0.5 text-left text-sm outline-none hover:bg-elevated focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-within:bg-elevated"
+          class="group relative flex h-8 w-full min-w-0 cursor-pointer items-center gap-1 rounded-md px-1.5 text-left text-sm outline-none hover:bg-elevated focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-1 focus-within:bg-elevated"
           :class="[
             isActiveSession(session) ? 'bg-elevated text-highlighted' : 'text-default',
             isUnreadSession(session) ? 'font-bold text-black dark:text-white' : 'font-normal'
@@ -202,7 +278,7 @@ function sessionActionItems(session: WebChatSession): DropdownMenuItem[] {
           @dblclick.stop.prevent="isActiveSession(session) && renameSession(session)"
           @contextmenu.prevent="openSessionContextMenu(session, $event)"
         >
-          <span v-if="isUnreadSession(session)" class="absolute inset-y-0 left-1 flex items-center" aria-hidden="true">
+          <span v-if="isUnreadSession(session)" class="absolute inset-y-0 left-2 flex items-center" aria-hidden="true">
             <span class="block size-1.5 rounded-full bg-primary" />
           </span>
           <span
@@ -258,7 +334,7 @@ function sessionActionItems(session: WebChatSession): DropdownMenuItem[] {
         </div>
       </div>
 
-      <p v-else class="px-0.5 text-xs text-muted">
+      <p v-else-if="!isGroupCollapsed(group)" class="px-1.5 text-xs text-muted">
         No chats yet
       </p>
     </section>
