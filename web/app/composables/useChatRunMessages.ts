@@ -96,6 +96,17 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
     if (submitStatus.value === 'submitted' || (isRunning.value && !hasAssistantResponseStarted.value)) return 'submitted'
     return isRunning.value ? 'streaming' : 'ready'
   })
+  const latestTaskPlan = computed(() => {
+    for (let messageIndex = messages.value.length - 1; messageIndex >= 0; messageIndex -= 1) {
+      const message = messages.value[messageIndex]
+      if (!message) continue
+      for (let partIndex = message.parts.length - 1; partIndex >= 0; partIndex -= 1) {
+        const taskPlan = message.parts[partIndex]?.taskPlan
+        if (taskPlan?.items.length) return taskPlan
+      }
+    }
+    return null
+  })
 
   function setActivity(label: string, kind: RunActivityKind) {
     currentActivity.value = { label, kind, updatedAt: Date.now() }
@@ -498,6 +509,7 @@ export function useChatRunMessages(options: UseChatRunMessagesOptions) {
     streamError,
     chatStatus,
     currentActivityLabel,
+    latestTaskPlan,
     isRunning,
     connectRun,
     hasConnectedRun,

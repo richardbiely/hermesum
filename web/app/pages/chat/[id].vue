@@ -32,6 +32,9 @@ const commitMessageModalOpen = ref(false)
 const commitMessageCopied = ref(false)
 const { input } = useChatDraft(sessionId)
 const chatContainer = ref<HTMLElement | null>(null)
+const chatFooterContainer = ref<HTMLElement | null>(null)
+const chatPromptColumn = ref<HTMLElement | null>(null)
+const chatTaskPlanOverlay = ref<HTMLElement | null>(null)
 const bottomReadSentinel = ref<HTMLElement | null>(null)
 const olderMessagesSentinel = ref<HTMLElement | null>(null)
 const initialScrollSettledSessionId = ref<string | null>(null)
@@ -55,6 +58,7 @@ let olderMessagesScrollRoot: Element | null = null
 let readScrollRoot: Element | null = null
 let readScrollAnimationFrame: number | undefined
 let previousScrollRestoration: ScrollRestoration | undefined
+let chatFooterResizeObserver: ResizeObserver | undefined
 
 const queuedMessages = useQueuedMessages()
 const queuedForSession = computed(() => queuedMessages.forSession(sessionId.value))
@@ -97,6 +101,7 @@ const {
   streamError,
   chatStatus,
   currentActivityLabel,
+  latestTaskPlan,
   isRunning,
   connectRun,
   hasConnectedRun,
@@ -527,6 +532,33 @@ function attachReadScrollListener() {
   readScrollRoot?.addEventListener('scroll', scheduleReadVisibilityCheck, { passive: true })
 }
 
+function updateAutoScrollOffset() {
+  const footerHeight = chatFooterContainer.value?.getBoundingClientRect().height ?? 0
+  const taskPlanHeight = chatTaskPlanOverlay.value?.getBoundingClientRect().height ?? 0
+  const columnRect = chatPromptColumn.value?.getBoundingClientRect()
+
+  document.documentElement.style.setProperty('--chat-auto-scroll-bottom', `${Math.ceil(footerHeight + taskPlanHeight + 12)}px`)
+  document.documentElement.style.setProperty('--chat-auto-scroll-left', `${Math.ceil(columnRect?.left ?? 0)}px`)
+  document.documentElement.style.setProperty('--chat-auto-scroll-width', `${Math.ceil(columnRect?.width ?? window.innerWidth)}px`)
+}
+
+function observeChatFooter() {
+  chatFooterResizeObserver?.disconnect()
+  window.removeEventListener('resize', updateAutoScrollOffset)
+
+  const footer = chatFooterContainer.value
+  if (!footer || typeof ResizeObserver !== 'function') {
+    updateAutoScrollOffset()
+    return
+  }
+
+  chatFooterResizeObserver = new ResizeObserver(updateAutoScrollOffset)
+  chatFooterResizeObserver.observe(footer)
+  if (chatTaskPlanOverlay.value) chatFooterResizeObserver.observe(chatTaskPlanOverlay.value)
+  window.addEventListener('resize', updateAutoScrollOffset)
+  updateAutoScrollOffset()
+}
+
 function waitForAnimationFrame() {
   if (typeof requestAnimationFrame !== 'function') return Promise.resolve()
   return new Promise<void>(resolve => requestAnimationFrame(() => resolve()))
@@ -845,6 +877,12 @@ watch(
 )
 
 watch(
+  [chatFooterContainer, chatPromptColumn, chatTaskPlanOverlay],
+  () => observeChatFooter(),
+  { flush: 'post' }
+)
+
+watch(
   [sessionId, () => route.query.run],
   ([currentSessionId, queryRun]) => {
     connectRouteRun({
@@ -872,6 +910,7 @@ onMounted(() => {
   }
 
   attachReadScrollListener()
+  observeChatFooter()
 
   stopQueuedAutoSend = activeChatRuns.onFinished(async (finishedSessionId) => {
     if (finishedSessionId !== sessionId.value) return
@@ -885,6 +924,11 @@ onBeforeUnmount(() => {
   if (previousScrollRestoration) history.scrollRestoration = previousScrollRestoration
   bottomReadObserver?.disconnect()
   olderMessagesObserver?.disconnect()
+  chatFooterResizeObserver?.disconnect()
+  window.removeEventListener('resize', updateAutoScrollOffset)
+  document.documentElement.style.removeProperty('--chat-auto-scroll-bottom')
+  document.documentElement.style.removeProperty('--chat-auto-scroll-left')
+  document.documentElement.style.removeProperty('--chat-auto-scroll-width')
   olderMessagesScrollRoot = null
   readScrollRoot?.removeEventListener('scroll', scheduleReadVisibilityCheck)
   readScrollRoot = null
@@ -966,6 +1010,10 @@ onBeforeUnmount(() => {
             :shouldAutoScroll="true"
             :shouldScrollToBottom="true"
             :autoScroll="true"
+            :ui="{
+              viewport: 'fixed top-auto bottom-[var(--chat-auto-scroll-bottom,128px)] left-[var(--chat-auto-scroll-left,0px)] w-[var(--chat-auto-scroll-width,100vw)] z-50 flex justify-center pointer-events-none',
+              autoScroll: 'pointer-events-auto rounded-full shadow-sm'
+            }"
             class="[--last-message-height:0px]"
           >
             <template #indicator>
@@ -1012,69 +1060,85 @@ onBeforeUnmount(() => {
     </template>
 
     <template #footer>
-      <UContainer class="mx-auto w-full max-w-[740px] pb-4 sm:pb-6">
-        <div v-if="sessionError || (!isLoadingSession && !hasSession)" class="flex min-h-36 items-center justify-center">
-          <UButton to="/" color="neutral" variant="soft" icon="i-lucide-square-pen" label="Start a new chat" />
-        </div>
+      <div ref="chatFooterContainer">
+        <UContainer class="mx-auto w-full max-w-[740px] pb-4 sm:pb-6">
+          <div ref="chatPromptColumn" class="bg-transparent">
+            <div v-if="sessionError || (!isLoadingSession && !hasSession)" class="flex min-h-36 items-center justify-center">
+              <UButton to="/" color="neutral" variant="soft" icon="i-lucide-square-pen" label="Start a new chat" />
+            </div>
 
-        <div v-else class="space-y-2">
-          <ChatQueuedMessages
-            v-if="queuedForSession.length"
-            :messages="queuedForSession"
-            :steering-id="steeringQueuedMessageId"
-            :disabled="isLoadingSession || !hasSession"
-            @edit="editQueuedMessage"
-            @delete="deleteQueuedMessage"
-            @steer="steerQueuedMessage"
-          />
+            <div v-else class="relative">
+              <div
+                v-if="latestTaskPlan"
+                ref="chatTaskPlanOverlay"
+                class="pointer-events-none absolute inset-x-0 bottom-full z-10"
+              >
+                <ChatTaskPlanCard
+                  :task-plan="latestTaskPlan"
+                  class="pointer-events-auto mx-4 sm:mx-6"
+                />
+              </div>
 
-          <UChatPrompt
-            v-model="input"
-            :aria-hidden="isLoadingSession"
-            :class="isLoadingSession ? 'pointer-events-none invisible' : undefined"
-            :error="error || context.contextError.value"
-            @submit="onSubmit"
-            @paste="onPromptPaste"
-            @keydown.down="onPromptArrowDown"
-            @keydown.up="onPromptArrowUp"
-            @keydown.esc="onPromptEscape"
-            @keydown.enter="onPromptAutocompleteEnter"
-          >
-            <template #footer>
-              <ChatPromptFooter
-                :submit-status="chatStatus"
-                :context-usage="promptContextUsage"
-                :workspaces="context.workspaces.value"
-                :selected-workspace="context.selectedWorkspace.value"
-                :workspace-invalid-signal="workspaceInvalidSignal"
-                :workspaces-loading="context.workspacesLoading.value"
-                :attachments="context.attachments.value"
-                :attachments-loading="context.attachmentsLoading.value"
-                :models="composer.models.value"
-                :selected-model="composer.selectedModel.value"
-                :selected-provider="composer.selectedProvider.value"
-                :selected-reasoning-effort="composer.selectedReasoningEffort.value"
-                :capabilities-loading="composer.capabilitiesLoading.value"
-                :slash-commands="slashCommands.filteredCommands.value"
-                :slash-commands-open="slashCommands.isOpen.value"
-                :slash-commands-loading="slashCommands.loading.value"
-                :highlighted-slash-command-index="slashCommands.highlightedIndex.value"
-                @stop="stopRun"
-                @update-selected-workspace="context.selectWorkspace"
-                @attach-files="attachFiles"
-                @remove-attachment="context.removeAttachment"
-                @voice-text="appendVoiceText"
-                @voice-error="showVoiceError"
-                @update-selected-model="composer.selectedModel.value = $event"
-                @update-selected-provider="composer.selectedProvider.value = $event"
-                @update-selected-reasoning-effort="composer.selectedReasoningEffort.value = $event"
-                @select-slash-command="selectSlashCommand"
-                @highlight-slash-command="slashCommands.highlightedIndex.value = $event"
-              />
-            </template>
-          </UChatPrompt>
-        </div>
-      </UContainer>
+              <div v-if="queuedForSession.length" class="mb-2">
+                <ChatQueuedMessages
+                  :messages="queuedForSession"
+                  :steering-id="steeringQueuedMessageId"
+                  :disabled="isLoadingSession || !hasSession"
+                  @edit="editQueuedMessage"
+                  @delete="deleteQueuedMessage"
+                  @steer="steerQueuedMessage"
+                />
+              </div>
+
+              <UChatPrompt
+                v-model="input"
+                :aria-hidden="isLoadingSession"
+                :class="isLoadingSession ? 'pointer-events-none invisible' : undefined"
+                :error="error || context.contextError.value"
+                @submit="onSubmit"
+                @paste="onPromptPaste"
+                @keydown.down="onPromptArrowDown"
+                @keydown.up="onPromptArrowUp"
+                @keydown.esc="onPromptEscape"
+                @keydown.enter="onPromptAutocompleteEnter"
+              >
+                <template #footer>
+                  <ChatPromptFooter
+                    :submit-status="chatStatus"
+                    :context-usage="promptContextUsage"
+                    :workspaces="context.workspaces.value"
+                    :selected-workspace="context.selectedWorkspace.value"
+                    :workspace-invalid-signal="workspaceInvalidSignal"
+                    :workspaces-loading="context.workspacesLoading.value"
+                    :attachments="context.attachments.value"
+                    :attachments-loading="context.attachmentsLoading.value"
+                    :models="composer.models.value"
+                    :selected-model="composer.selectedModel.value"
+                    :selected-provider="composer.selectedProvider.value"
+                    :selected-reasoning-effort="composer.selectedReasoningEffort.value"
+                    :capabilities-loading="composer.capabilitiesLoading.value"
+                    :slash-commands="slashCommands.filteredCommands.value"
+                    :slash-commands-open="slashCommands.isOpen.value"
+                    :slash-commands-loading="slashCommands.loading.value"
+                    :highlighted-slash-command-index="slashCommands.highlightedIndex.value"
+                    @stop="stopRun"
+                    @update-selected-workspace="context.selectWorkspace"
+                    @attach-files="attachFiles"
+                    @remove-attachment="context.removeAttachment"
+                    @voice-text="appendVoiceText"
+                    @voice-error="showVoiceError"
+                    @update-selected-model="composer.selectedModel.value = $event"
+                    @update-selected-provider="composer.selectedProvider.value = $event"
+                    @update-selected-reasoning-effort="composer.selectedReasoningEffort.value = $event"
+                    @select-slash-command="selectSlashCommand"
+                    @highlight-slash-command="slashCommands.highlightedIndex.value = $event"
+                  />
+                </template>
+              </UChatPrompt>
+            </div>
+          </div>
+        </UContainer>
+      </div>
     </template>
   </UDashboardPanel>
 
