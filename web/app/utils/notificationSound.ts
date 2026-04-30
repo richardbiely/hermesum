@@ -64,10 +64,9 @@ function tonesForVariant(variant: NotificationSoundVariant): Tone[] {
 
   if (variant === 'attention') {
     return [
-      { offset: 0, frequency: 1568, duration: 0.34 },
-      { offset: 0.018, frequency: 2093, duration: 0.28 },
-      { offset: 0.046, frequency: 2637, duration: 0.22 },
-      { offset: 0.082, frequency: 3136, duration: 0.16 }
+      { offset: 0, frequency: 523, duration: 0.18 },
+      { offset: 0.09, frequency: 659, duration: 0.2 },
+      { offset: 0.18, frequency: 880, duration: 0.32 }
     ]
   }
 
@@ -155,7 +154,7 @@ async function scheduleNotificationSound(variant: NotificationSoundVariant) {
 
   const start = context.currentTime + 0.01
   const tones = tonesForVariant(variant)
-  const volume = variant === 'attention' ? 0.16 : variant === 'sent' ? 0.08 : 0.09
+  const volume = variant === 'attention' ? 0.07 : variant === 'sent' ? 0.08 : 0.09
   const end = Math.max(...tones.map(tone => tone.offset + tone.duration))
   const gain = context.createGain()
 
