@@ -6,6 +6,14 @@ export type QueuedMessage = {
   updatedAt: string
 }
 
+type AutoSendQueuedMessageState = {
+  hasSession: boolean
+  queuedCount: number
+  isRunning: boolean
+  hasActiveRun: boolean
+  isSubmitting: boolean
+}
+
 type CreateQueuedMessageOptions = {
   sessionId: string
   text: string
@@ -17,6 +25,10 @@ function newId() {
   return typeof crypto !== 'undefined' && 'randomUUID' in crypto
     ? crypto.randomUUID()
     : `${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
+export function shouldAutoSendQueuedMessage(state: AutoSendQueuedMessageState) {
+  return state.hasSession && state.queuedCount > 0 && !state.isRunning && !state.hasActiveRun && !state.isSubmitting
 }
 
 export function createQueuedMessage(options: CreateQueuedMessageOptions): QueuedMessage | null {

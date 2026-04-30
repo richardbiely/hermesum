@@ -3,7 +3,7 @@ import { playNotificationSound, prepareNotificationSound } from '../../utils/not
 import { recoverActiveRun } from '../../utils/activeRunRecovery'
 import { connectRouteRun } from '../../utils/routeRunConnection'
 import type { GitFileSelection, SessionDetailResponse, WebChatAttachment, WebChatMessage } from '~/types/web-chat'
-import type { QueuedMessage } from '~/utils/queuedMessages'
+import { type QueuedMessage, shouldAutoSendQueuedMessage } from '~/utils/queuedMessages'
 import { latestChangePartKey, messageText } from '~/utils/chatMessages'
 import { filesFromClipboard, writeClipboardText } from '~/utils/clipboard'
 import { mergeOptimisticUserMessages } from '~/utils/optimisticChatMessages'
@@ -119,6 +119,13 @@ const {
 const error = computed(() => streamError.value)
 const latestGitChangePartKey = computed(() => latestChangePartKey(messages.value))
 const chatMessagesStatus = computed(() => chatStatus.value === 'submitted' ? 'streaming' : chatStatus.value)
+const canAutoSendQueuedMessage = computed(() => shouldAutoSendQueuedMessage({
+  hasSession: hasSession.value,
+  queuedCount: queuedForSession.value.length,
+  isRunning: isRunning.value,
+  hasActiveRun: Boolean(displayedData.value?.activeRun),
+  isSubmitting: submitStatus.value === 'submitted'
+}))
 const activeRunAssistantMessageId = computed(() => {
   if (!isRunning.value) return null
   return [...messages.value].reverse().find(message => message.role === 'assistant')?.id ?? null
@@ -835,6 +842,14 @@ async function sendNextQueuedMessage() {
     queuedMessages.prepend(queued)
   }
 }
+
+watch(
+  canAutoSendQueuedMessage,
+  (shouldSend) => {
+    if (shouldSend) void sendNextQueuedMessage()
+  },
+  { immediate: true }
+)
 
 watch(
   () => displayedData.value?.activeRun,

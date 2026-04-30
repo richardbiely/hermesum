@@ -4,6 +4,7 @@ import {
   createQueuedMessage,
   nextQueuedMessage,
   removeQueuedMessage,
+  shouldAutoSendQueuedMessage,
   updateQueuedMessage
 } from '../app/utils/queuedMessages.ts'
 
@@ -45,5 +46,13 @@ test('returns next queued message for a session in FIFO order', () => {
   ]
 
   assert.equal(nextQueuedMessage(messages, 's1')?.id, 'q1')
-}
-)
+})
+
+test('auto-sends queued messages only when the current session is idle and ready', () => {
+  assert.equal(shouldAutoSendQueuedMessage({ hasSession: true, queuedCount: 1, isRunning: false, hasActiveRun: false, isSubmitting: false }), true)
+  assert.equal(shouldAutoSendQueuedMessage({ hasSession: false, queuedCount: 1, isRunning: false, hasActiveRun: false, isSubmitting: false }), false)
+  assert.equal(shouldAutoSendQueuedMessage({ hasSession: true, queuedCount: 0, isRunning: false, hasActiveRun: false, isSubmitting: false }), false)
+  assert.equal(shouldAutoSendQueuedMessage({ hasSession: true, queuedCount: 1, isRunning: true, hasActiveRun: false, isSubmitting: false }), false)
+  assert.equal(shouldAutoSendQueuedMessage({ hasSession: true, queuedCount: 1, isRunning: false, hasActiveRun: true, isSubmitting: false }), false)
+  assert.equal(shouldAutoSendQueuedMessage({ hasSession: true, queuedCount: 1, isRunning: false, hasActiveRun: false, isSubmitting: true }), false)
+})
