@@ -56,6 +56,7 @@ def create_session_response(
     return SessionDetailResponse(
         session=serialize_session(session),
         messages=serialize_messages(messages),
+        compressionCount=compression_count(db, session),
     )
 
 
@@ -85,7 +86,37 @@ def rename_session_response(
     return SessionDetailResponse(
         session=serialize_session(session),
         messages=serialize_messages(db.get_messages(session_id)),
+        compressionCount=compression_count(db, session),
     )
+
+
+def compression_count(db: SessionDB, session: dict[str, Any]) -> int:
+    """Count compression continuations from the logical conversation root to this session."""
+    count = 0
+    current = session
+    for _ in range(100):
+        parent_id = current.get("parent_session_id")
+        if not parent_id:
+            return count
+
+        parent = db._get_session_rich_row(parent_id)
+        if not parent:
+            return count
+
+        parent_ended_at = parent.get("ended_at")
+        current_started_at = current.get("started_at")
+        is_compression_child = (
+            parent.get("end_reason") == "compression"
+            and isinstance(parent_ended_at, (int, float))
+            and isinstance(current_started_at, (int, float))
+            and current_started_at >= parent_ended_at
+        )
+        if is_compression_child:
+            count += 1
+
+        current = parent
+
+    return count
 
 
 def _update_session_model_config(db: SessionDB, session_id: str, updates: dict[str, Any]) -> None:
@@ -137,6 +168,7 @@ def edit_message_response(
     return SessionDetailResponse(
         session=serialize_session(session),
         messages=serialize_messages(db.get_messages(session_id)),
+        compressionCount=compression_count(db, session),
     )
 
 
@@ -178,6 +210,7 @@ def get_session_response(
         messages=serialize_messages(messages, changes_by_message=changes_by_message),
         activeRun=active_run_for_session(session_id) if active_run_for_session else None,
         isolatedWorkspace=isolated_worktree_for_session(db, session_id) if isolated_worktree_for_session else None,
+        compressionCount=compression_count(db, session),
         messagesHasMoreBefore=messages_total > 0 and bool(messages) and all_messages[0].get("id") != messages[0].get("id"),
         messagesTotal=messages_total,
     )

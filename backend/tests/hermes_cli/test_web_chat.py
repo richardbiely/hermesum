@@ -133,6 +133,25 @@ def test_compressed_sidebar_session_uses_tip_workspace(client, tmp_path):
     assert sessions[0]["workspace"] == str(tip_workspace)
 
 
+def test_session_detail_reports_compression_count(client):
+    from hermes_state import SessionDB
+
+    db = SessionDB()
+    db.create_session("root-session", source="web-chat")
+    db.append_message("root-session", "user", "Before compression")
+    db.end_session("root-session", "compression")
+    db.create_session("second-session", source="web-chat", parent_session_id="root-session")
+    db.append_message("second-session", "user", "After first compression")
+    db.end_session("second-session", "compression")
+    db.create_session("third-session", source="web-chat", parent_session_id="second-session")
+    db.append_message("third-session", "user", "After second compression")
+
+    response = client.get("/api/web-chat/sessions/third-session")
+
+    assert response.status_code == 200
+    assert response.json()["compressionCount"] == 2
+
+
 def test_rejects_unsafe_session_limit(client):
     response = client.get("/api/web-chat/sessions?limit=101")
 

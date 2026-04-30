@@ -432,6 +432,7 @@ class SessionDetailResponse(BaseModel):
     messages: list[WebChatMessage]
     activeRun: ActiveRunSummary | None = None
     isolatedWorkspace: WebChatIsolatedWorkspace | None = None
+    compressionCount: int = 0
     messagesHasMoreBefore: bool = False
     messagesTotal: int | None = None
 

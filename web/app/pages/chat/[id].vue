@@ -127,10 +127,13 @@ const promptContextUsage = computed(() => {
     || composer.models.value.find(model => model.id === composer.selectedModel.value)
   if (!model?.contextWindowTokens || !model.autoCompressTokens) return null
 
+  const usage = latestMeasuredContextTokens()
   return {
-    usedTokens: latestMeasuredContextTokens(),
+    usedTokens: usage.tokens,
     maxTokens: model.contextWindowTokens,
-    autoCompressTokens: model.autoCompressTokens
+    autoCompressTokens: model.autoCompressTokens,
+    compressionCount: Math.max(0, displayedData.value?.compressionCount || 0),
+    estimated: usage.estimated
   }
 })
 const {
@@ -246,18 +249,45 @@ const title = computed(() => {
 })
 
 function latestMeasuredContextTokens() {
-  for (let index = messages.value.length - 1; index >= 0; index -= 1) {
-    const message = messages.value[index]
+  const messagesValue = messages.value
+  let baselineTokens = 0
+  let baselineIndex = -1
+
+  for (let index = messagesValue.length - 1; index >= 0; index -= 1) {
+    const message = messagesValue[index]
     if (message?.role !== 'assistant') continue
 
     const measured = [message.inputTokens, message.outputTokens]
       .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0)
       .reduce((total, value) => total + value, 0)
 
-    if (measured > 0) return measured
+    if (measured > 0) {
+      baselineTokens = measured
+      baselineIndex = index
+      break
+    }
   }
 
-  return 0
+  if (!isRunning.value) return { tokens: baselineTokens, estimated: false }
+
+  const activeMessages = messagesValue.slice(baselineIndex + 1)
+  const liveText = activeMessages
+    .filter(message => message.role === 'user' || message.role === 'assistant')
+    .map(messageText)
+    .filter(Boolean)
+    .join('\n\n')
+  const estimatedLiveTokens = estimateTokenCount(liveText)
+
+  return {
+    tokens: baselineTokens + estimatedLiveTokens,
+    estimated: estimatedLiveTokens > 0
+  }
+}
+
+function estimateTokenCount(text: string) {
+  const normalized = text.trim()
+  if (!normalized) return 0
+  return Math.max(1, Math.ceil(normalized.length / 4))
 }
 
 function pathBaseName(path?: string | null) {

@@ -26,6 +26,8 @@ type ChatContextUsage = {
   usedTokens: number
   maxTokens: number
   autoCompressTokens: number
+  compressionCount?: number
+  estimated?: boolean
 }
 
 type ChatPromptFooterProps = {
@@ -114,7 +116,12 @@ const contextUsagePercent = computed(() => {
 })
 const contextUsageProgressStyle = computed(() => {
   if (contextUsagePercent.value === null) return undefined
-  return { '--context-usage-progress': `${contextUsagePercent.value}%` }
+  const percent = contextUsagePercent.value
+  const hue = Math.round(142 - (142 * percent / 100))
+  return {
+    '--context-usage-progress': `${percent}%`,
+    '--context-usage-color': `hsl(${hue} 76% 44%)`
+  }
 })
 const contextUsageLeft = computed(() => {
   const usage = props.contextUsage
@@ -125,6 +132,7 @@ const contextAutoCompressPercent = computed(() => {
   if (!usage || usage.maxTokens <= 0) return null
   return Math.min(100, Math.max(0, Math.round((usage.autoCompressTokens / usage.maxTokens) * 100)))
 })
+const contextCompressionCount = computed(() => Math.max(0, props.contextUsage?.compressionCount || 0))
 
 const workspaceLabel = computed(() => selectedWorkspaceItem.value?.label || 'No workspace')
 const modelLabel = computed(() => selectedModelCapability.value?.label || props.selectedModel || 'Model')
@@ -455,7 +463,9 @@ onBeforeUnmount(() => {
         <div class="min-w-52 space-y-1 text-xs">
           <p class="font-medium text-highlighted">Context window</p>
           <p>{{ contextUsagePercent }}% used ({{ formatContextTokens(contextUsageLeft) }} left)</p>
-          <p>{{ formatContextTokens(contextUsage.usedTokens) }} / {{ formatContextTokens(contextUsage.maxTokens) }} tokens used</p>
+          <p>{{ formatContextTokens(contextUsage.usedTokens) }} / {{ formatContextTokens(contextUsage.maxTokens) }} tokens used{{ contextUsage.estimated ? ' (live estimate)' : '' }}</p>
+          <p v-if="contextCompressionCount > 0">Compressed {{ contextCompressionCount }}× (context generation {{ contextCompressionCount + 1 }})</p>
+          <p v-else>No compression yet</p>
           <p class="text-muted">Auto-compress at {{ formatContextTokens(contextUsage.autoCompressTokens) }}{{ contextAutoCompressPercent === null ? '' : ` (${contextAutoCompressPercent}%)` }}</p>
         </div>
       </template>
@@ -467,7 +477,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .context-usage-ring {
-  background: conic-gradient(var(--ui-primary) var(--context-usage-progress), var(--ui-border) 0);
+  background: conic-gradient(var(--context-usage-color, var(--ui-primary)) var(--context-usage-progress), var(--ui-border) 0);
 }
 
 .workspace-invalid-shake {

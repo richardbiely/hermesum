@@ -371,6 +371,7 @@ export type SessionDetailResponse = {
   messages: WebChatMessage[]
   activeRun?: ActiveRunSummary | null
   isolatedWorkspace?: WebChatIsolatedWorkspace | null
+  compressionCount?: number
   messagesHasMoreBefore?: boolean
   messagesTotal?: number | null
 }
