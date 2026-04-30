@@ -119,6 +119,7 @@ export type WebChatMessage = {
   cacheReadTokens?: number | null
   cacheWriteTokens?: number | null
   reasoningTokens?: number | null
+  contextTokens?: number | null
   apiCalls?: number | null
   generationDurationMs?: number | null
   modelDurationMs?: number | null

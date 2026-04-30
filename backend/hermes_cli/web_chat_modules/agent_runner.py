@@ -336,6 +336,7 @@ def agent_executor(
                 "cacheReadTokens": result.get("cache_read_tokens"),
                 "cacheWriteTokens": result.get("cache_write_tokens"),
                 "reasoningTokens": result.get("reasoning_tokens"),
+                "contextTokens": result.get("last_prompt_tokens"),
                 "apiCalls": result.get("api_calls"),
             }.items() if value is not None
         }

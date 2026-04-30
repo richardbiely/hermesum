@@ -463,7 +463,7 @@ onBeforeUnmount(() => {
         <div class="min-w-52 space-y-1 text-xs">
           <p class="font-medium text-highlighted">Context window</p>
           <p>{{ contextUsagePercent }}% used ({{ formatContextTokens(contextUsageLeft) }} left)</p>
-          <p>{{ formatContextTokens(contextUsage.usedTokens) }} / {{ formatContextTokens(contextUsage.maxTokens) }} tokens used{{ contextUsage.estimated ? ' (live estimate)' : '' }}</p>
+          <p>{{ formatContextTokens(contextUsage.usedTokens) }} / {{ formatContextTokens(contextUsage.maxTokens) }} tokens used{{ contextUsage.estimated ? ' (estimate)' : '' }}</p>
           <p v-if="contextCompressionCount > 0">Compressed {{ contextCompressionCount }}× (context generation {{ contextCompressionCount + 1 }})</p>
           <p v-else>No compression yet</p>
           <p class="text-muted">Auto-compress at {{ formatContextTokens(contextUsage.autoCompressTokens) }}{{ contextAutoCompressPercent === null ? '' : ` (${contextAutoCompressPercent}%)` }}</p>

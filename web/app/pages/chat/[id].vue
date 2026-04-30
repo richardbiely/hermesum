@@ -10,6 +10,7 @@ import { mergeOptimisticUserMessages } from '~/utils/optimisticChatMessages'
 import { markLocalMessageFailed, markLocalMessageSending, removeLocalMessage } from '~/utils/failedChatMessages'
 import { isElementVisibleInRoot, nearestScrollableAncestor, scrollElementTreeToBottomAfterRender } from '~/utils/chatInitialScroll'
 import { loadingChatSkeletonCount } from '~/utils/chatLoadingState'
+import { latestContextUsageTokens } from '~/utils/contextUsage'
 
 const INITIAL_SESSION_MESSAGE_LIMIT = 60
 const OLDER_SESSION_MESSAGE_LIMIT = 80
@@ -127,7 +128,8 @@ const promptContextUsage = computed(() => {
     || composer.models.value.find(model => model.id === composer.selectedModel.value)
   if (!model?.contextWindowTokens || !model.autoCompressTokens) return null
 
-  const usage = latestMeasuredContextTokens()
+  const usage = latestContextUsageTokens(messages.value, isRunning.value)
+  if (!usage) return null
   return {
     usedTokens: usage.tokens,
     maxTokens: model.contextWindowTokens,
@@ -247,48 +249,6 @@ const title = computed(() => {
   if (sessionError.value || !hasSession.value) return 'Chat unavailable'
   return displayedData.value?.session.title || 'Chat'
 })
-
-function latestMeasuredContextTokens() {
-  const messagesValue = messages.value
-  let baselineTokens = 0
-  let baselineIndex = -1
-
-  for (let index = messagesValue.length - 1; index >= 0; index -= 1) {
-    const message = messagesValue[index]
-    if (message?.role !== 'assistant') continue
-
-    const measured = [message.inputTokens, message.outputTokens]
-      .filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0)
-      .reduce((total, value) => total + value, 0)
-
-    if (measured > 0) {
-      baselineTokens = measured
-      baselineIndex = index
-      break
-    }
-  }
-
-  if (!isRunning.value) return { tokens: baselineTokens, estimated: false }
-
-  const activeMessages = messagesValue.slice(baselineIndex + 1)
-  const liveText = activeMessages
-    .filter(message => message.role === 'user' || message.role === 'assistant')
-    .map(messageText)
-    .filter(Boolean)
-    .join('\n\n')
-  const estimatedLiveTokens = estimateTokenCount(liveText)
-
-  return {
-    tokens: baselineTokens + estimatedLiveTokens,
-    estimated: estimatedLiveTokens > 0
-  }
-}
-
-function estimateTokenCount(text: string) {
-  const normalized = text.trim()
-  if (!normalized) return 0
-  return Math.max(1, Math.ceil(normalized.length / 4))
-}
 
 function pathBaseName(path?: string | null) {
   if (!path) return null

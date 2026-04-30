@@ -265,6 +265,7 @@ def serialize_message(message: dict[str, Any]) -> WebChatMessage:
         cacheReadTokens=metrics.get("cacheReadTokens"),
         cacheWriteTokens=metrics.get("cacheWriteTokens"),
         reasoningTokens=metrics.get("reasoningTokens"),
+        contextTokens=metrics.get("contextTokens"),
         apiCalls=metrics.get("apiCalls"),
         generationDurationMs=metrics.get("generationDurationMs"),
         modelDurationMs=metrics.get("modelDurationMs"),

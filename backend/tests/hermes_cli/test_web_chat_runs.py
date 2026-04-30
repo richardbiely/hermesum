@@ -22,7 +22,7 @@ def test_start_run_returns_ids_and_persists_messages(client, monkeypatch, tmp_pa
         seen["model"] = context.model
         seen["reasoningEffort"] = context.reasoning_effort
         seen["workspace"] = context.workspace
-        context.usage_metrics = {"tokenCount": 42, "inputTokens": 30, "outputTokens": 12, "apiCalls": 1}
+        context.usage_metrics = {"tokenCount": 42, "inputTokens": 30, "outputTokens": 12, "contextTokens": 28, "apiCalls": 1}
         emit({"type": "message.delta", "content": "Done"})
         return "Done"
 
@@ -49,6 +49,7 @@ def test_start_run_returns_ids_and_persists_messages(client, monkeypatch, tmp_pa
     assert "event: message.delta" in body
     assert "event: message.completed" in body
     assert '"tokenCount":42' in body
+    assert '"contextTokens":28' in body
     assert '"generationDurationMs"' in body
     assert "event: run.completed" in body
 
@@ -61,6 +62,7 @@ def test_start_run_returns_ids_and_persists_messages(client, monkeypatch, tmp_pa
     assert detail.json()["messages"][0]["inputTokens"] == 30
     assert detail.json()["messages"][1]["tokenCount"] == 42
     assert detail.json()["messages"][1]["outputTokens"] == 12
+    assert detail.json()["messages"][1]["contextTokens"] == 28
     assert detail.json()["messages"][1]["apiCalls"] == 1
     assert isinstance(detail.json()["messages"][1]["generationDurationMs"], int)
     assert isinstance(detail.json()["messages"][1]["modelDurationMs"], int)

@@ -19,6 +19,7 @@ type CompletedRunPayload = {
   cacheReadTokens?: number | null
   cacheWriteTokens?: number | null
   reasoningTokens?: number | null
+  contextTokens?: number | null
   apiCalls?: number | null
   generationDurationMs?: number | null
   modelDurationMs?: number | null
@@ -254,6 +255,7 @@ export function useActiveChatRuns() {
         cacheReadTokens: numericMetric(metrics, 'cacheReadTokens'),
         cacheWriteTokens: numericMetric(metrics, 'cacheWriteTokens'),
         reasoningTokens: numericMetric(metrics, 'reasoningTokens'),
+        contextTokens: numericMetric(metrics, 'contextTokens'),
         apiCalls: numericMetric(metrics, 'apiCalls'),
         generationDurationMs: numericMetric(metrics, 'generationDurationMs'),
         modelDurationMs: numericMetric(metrics, 'modelDurationMs'),

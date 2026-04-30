@@ -42,6 +42,7 @@ type RunMetrics = Partial<Pick<WebChatMessage,
   | 'cacheReadTokens'
   | 'cacheWriteTokens'
   | 'reasoningTokens'
+  | 'contextTokens'
   | 'apiCalls'
   | 'generationDurationMs'
   | 'modelDurationMs'
@@ -63,6 +64,7 @@ function applyRunMetrics(message: WebChatMessage, metrics: RunMetrics) {
   message.cacheReadTokens = metrics.cacheReadTokens ?? null
   message.cacheWriteTokens = metrics.cacheWriteTokens ?? null
   message.reasoningTokens = metrics.reasoningTokens ?? null
+  message.contextTokens = metrics.contextTokens ?? null
   message.apiCalls = metrics.apiCalls ?? null
   message.generationDurationMs = metrics.generationDurationMs ?? null
   message.modelDurationMs = metrics.modelDurationMs ?? null

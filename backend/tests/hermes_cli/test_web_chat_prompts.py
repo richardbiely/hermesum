@@ -197,7 +197,7 @@ def test_agent_executor_forwards_runtime_status_events(monkeypatch):
         def run_conversation(self, prompt, *, conversation_history, task_id):
             assert self.status_callback is not None
             self.status_callback("warn", "test warning")
-            return {"final_response": "done"}
+            return {"final_response": "done", "last_prompt_tokens": 12345}
 
     monkeypatch.setitem(sys.modules, "run_agent", types.SimpleNamespace(AIAgent=FakeAgent))
     monkeypatch.setattr("hermes_cli.config.load_config", lambda: {})
@@ -215,6 +215,7 @@ def test_agent_executor_forwards_runtime_status_events(monkeypatch):
     )
 
     assert agent_executor(context, events.append, conversation_history=lambda _: []) == "done"
+    assert context.usage_metrics == {"contextTokens": 12345}
     assert "persist_session" not in agent_kwargs
     assert agent_kwargs["session_db"] is None
     assert events == [{

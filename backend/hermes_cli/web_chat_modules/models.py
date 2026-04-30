@@ -135,6 +135,7 @@ class WebChatMessage(BaseModel):
     cacheReadTokens: int | None = None
     cacheWriteTokens: int | None = None
     reasoningTokens: int | None = None
+    contextTokens: int | None = None
     apiCalls: int | None = None
     generationDurationMs: int | None = None
     modelDurationMs: int | None = None
