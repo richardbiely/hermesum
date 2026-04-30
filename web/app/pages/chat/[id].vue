@@ -36,6 +36,7 @@ const chatContainer = ref<HTMLElement | null>(null)
 const chatFooterContainer = ref<HTMLElement | null>(null)
 const chatPromptColumn = ref<HTMLElement | null>(null)
 const chatTaskPlanOverlay = ref<HTMLElement | null>(null)
+const promptOverlayHeight = ref(0)
 const bottomReadSentinel = ref<HTMLElement | null>(null)
 const olderMessagesSentinel = ref<HTMLElement | null>(null)
 const initialScrollSettledSessionId = ref<string | null>(null)
@@ -524,10 +525,11 @@ function attachReadScrollListener() {
 
 function updateAutoScrollOffset() {
   const footerHeight = chatFooterContainer.value?.getBoundingClientRect().height ?? 0
-  const taskPlanHeight = chatTaskPlanOverlay.value?.getBoundingClientRect().height ?? 0
+  const overlayHeight = Math.ceil(chatTaskPlanOverlay.value?.getBoundingClientRect().height ?? 0)
   const columnRect = chatPromptColumn.value?.getBoundingClientRect()
 
-  document.documentElement.style.setProperty('--chat-auto-scroll-bottom', `${Math.ceil(footerHeight + taskPlanHeight + 12)}px`)
+  promptOverlayHeight.value = overlayHeight
+  document.documentElement.style.setProperty('--chat-auto-scroll-bottom', `${Math.ceil(footerHeight + overlayHeight + 12)}px`)
   document.documentElement.style.setProperty('--chat-auto-scroll-left', `${Math.ceil(columnRect?.left ?? 0)}px`)
   document.documentElement.style.setProperty('--chat-auto-scroll-width', `${Math.ceil(columnRect?.width ?? window.innerWidth)}px`)
 }
@@ -1043,6 +1045,11 @@ onBeforeUnmount(() => {
               <ChatRunActivityIndicator :label="currentActivityLabel || 'Working…'" />
             </template>
           </UChatMessage>
+          <div
+            v-if="promptOverlayHeight"
+            :style="{ height: `${promptOverlayHeight + 12}px` }"
+            aria-hidden="true"
+          />
           <div ref="bottomReadSentinel" class="h-px w-full" aria-hidden="true" />
         </template>
         </div>
