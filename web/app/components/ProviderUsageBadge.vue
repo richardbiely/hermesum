@@ -9,22 +9,23 @@ const props = defineProps<{
 const primaryLimit = computed(() => props.usage?.limits.find(limit => limit.id === 'codex') || props.usage?.limits[0] || null)
 const summaryWindows = computed(() => primaryLimit.value?.windows.slice(0, 2) || [])
 const visibleLimits = computed(() => props.usage?.limits.filter(limit => limit.windows.length > 0) || [])
-const visible = computed(() => props.loading || (props.usage?.available && summaryWindows.value.length > 0))
+const hasUsageSummary = computed(() => Boolean(props.usage?.available && summaryWindows.value.length > 0))
+const visible = computed(() => props.loading || hasUsageSummary.value)
 
 const color = computed(() => {
-  if (props.loading) return 'info'
-  if (!props.usage?.available) return 'warning'
+  if (!props.usage?.available && !props.loading) return 'warning'
   const highestUsedPercent = Math.max(...summaryWindows.value.map(window => window.usedPercent), 0)
   if (highestUsedPercent >= 90) return 'warning'
   return 'info'
 })
 
 const badgeLabel = computed(() => {
-  if (props.loading) return 'Codex…'
-  if (!props.usage?.available || !summaryWindows.value.length) return 'Codex limits unavailable'
+  if (hasUsageSummary.value) {
+    const parts = summaryWindows.value.map(window => `${formatPercent(window.remainingPercent)}${windowCode(window)}`)
+    return `Codex ${parts.join(' · ')}`
+  }
 
-  const parts = summaryWindows.value.map(window => `${formatPercent(window.remainingPercent)}${windowCode(window)}`)
-  return `Codex ${parts.join(' · ')}`
+  return props.loading ? 'Codex…' : 'Codex limits unavailable'
 })
 
 function formatPercent(value: number) {
@@ -66,7 +67,7 @@ function windowCode(window: WebChatProviderUsageWindow) {
       variant="subtle"
       icon="i-lucide-gauge"
       size="sm"
-      class="hidden max-w-40 truncate font-normal sm:inline-flex"
+      class="hidden max-w-40 cursor-default truncate font-normal sm:inline-flex"
     >
       {{ badgeLabel }}
     </UBadge>
