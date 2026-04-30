@@ -155,9 +155,9 @@ function formatBytes(bytes: number) {
 </script>
 
 <template>
-  <UModal v-model:open="open" :ui="{ content: 'sm:max-w-5xl', body: 'p-0' }">
+  <UModal v-model:open="open" :transition="false" :ui="{ content: 'sm:max-w-5xl', body: 'p-0' }">
     <template #content>
-      <div class="relative flex max-h-[85vh] flex-col overflow-hidden rounded-lg bg-default shadow-xl ring ring-default">
+      <div class="relative flex h-[85vh] max-h-[calc(100dvh-2rem)] flex-col overflow-hidden rounded-lg bg-default shadow-xl ring ring-default">
         <div class="flex min-h-10 items-center gap-3 border-b border-default px-3 py-2">
           <div class="min-w-0 flex-1">
             <div class="truncate text-xs font-medium text-toned">
