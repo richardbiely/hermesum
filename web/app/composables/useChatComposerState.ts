@@ -14,6 +14,12 @@ export function useChatComposerState(options: ChatComposerStateOptions) {
   const { input } = useChatDraft(sessionId)
   const slashCommands = useSlashCommands({ input })
   const autocomplete = useChatSlashCommandAutocomplete({ input, slashCommands })
+  const drop = useChatAttachmentDrop({
+    disabled: computed(() => chatStatus.value === 'submitted' || chatStatus.value === 'streaming' || context.attachmentsLoading.value),
+    attachFiles,
+    toast,
+    unavailableTitle: 'Attachment upload is unavailable right now'
+  })
 
   function appendVoiceText(text: string) {
     input.value = input.value ? `${input.value} ${text}` : text
@@ -51,5 +57,10 @@ export function useChatComposerState(options: ChatComposerStateOptions) {
     appendVoiceText,
     attachFiles,
     onPromptPaste,
+    isDraggingFiles: drop.isDraggingFiles,
+    onPromptDragEnter: drop.onPromptDragEnter,
+    onPromptDragOver: drop.onPromptDragOver,
+    onPromptDragLeave: drop.onPromptDragLeave,
+    onPromptDrop: drop.onPromptDrop,
   }
 }

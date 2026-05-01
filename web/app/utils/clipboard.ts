@@ -33,11 +33,24 @@ export function filesFromClipboard(event: ClipboardEvent) {
   const clipboardData = event.clipboardData
   if (!clipboardData) return []
 
-  const files = Array.from(clipboardData.files)
+  return filesFromDataTransfer(clipboardData)
+}
+
+export function filesFromDataTransfer(dataTransfer: DataTransfer | null) {
+  if (!dataTransfer) return []
+
+  const files = Array.from(dataTransfer.files)
   if (files.length) return files
 
-  return Array.from(clipboardData.items)
+  return Array.from(dataTransfer.items)
     .filter(item => item.kind === 'file')
     .map(item => item.getAsFile())
     .filter((file): file is File => Boolean(file))
+}
+
+export function hasDataTransferFiles(dataTransfer: DataTransfer | null) {
+  if (!dataTransfer) return false
+  if (Array.from(dataTransfer.types).includes('Files')) return true
+
+  return Array.from(dataTransfer.items).some(item => item.kind === 'file')
 }

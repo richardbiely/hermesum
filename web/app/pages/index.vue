@@ -65,6 +65,19 @@ async function attachFiles(files: File[]) {
   }
 }
 
+const {
+  isDraggingFiles,
+  onPromptDragEnter,
+  onPromptDragOver,
+  onPromptDragLeave,
+  onPromptDrop
+} = useChatAttachmentDrop({
+  disabled: computed(() => loading.value || context.attachmentsLoading.value),
+  attachFiles,
+  toast,
+  unavailableTitle: 'Attachment upload is already in progress'
+})
+
 async function onPromptPaste(event: ClipboardEvent) {
   const files = filesFromClipboard(event)
   if (!files.length) return
@@ -146,47 +159,62 @@ async function onSubmit() {
             <p class="text-muted">Start a native web chat session backed by Hermes Agent.</p>
           </div>
 
-          <UChatPrompt
-            v-model="input"
-            :error="error || context.contextError.value"
-            @submit="onSubmit"
-            @paste="onPromptPaste"
-            @keydown.down="onPromptArrowDown"
-            @keydown.up="onPromptArrowUp"
-            @keydown.esc="onPromptEscape"
-            @keydown.enter="onPromptAutocompleteEnter"
+          <div
+            class="relative rounded-xl"
+            :class="isDraggingFiles ? 'ring-2 ring-primary/40 ring-offset-2 ring-offset-default' : undefined"
+            @dragenter="onPromptDragEnter"
+            @dragover="onPromptDragOver"
+            @dragleave="onPromptDragLeave"
+            @drop="onPromptDrop"
           >
-            <template #footer>
-              <ChatPromptFooter
-                :submit-status="loading ? 'submitted' : 'ready'"
-                :workspaces="context.workspaces.value"
-                :selected-workspace="context.selectedWorkspace.value"
-                :workspace-invalid-signal="workspaceInvalidSignal"
-                :workspaces-loading="context.workspacesLoading.value"
-                :attachments="context.attachments.value"
-                :attachments-loading="context.attachmentsLoading.value"
-                :models="composer.models.value"
-                :selected-model="composer.selectedModel.value"
-                :selected-provider="composer.selectedProvider.value"
-                :selected-reasoning-effort="composer.selectedReasoningEffort.value"
-                :capabilities-loading="composer.capabilitiesLoading.value"
-                :slash-commands="slashCommands.filteredCommands.value"
-                :slash-commands-open="slashCommands.isOpen.value"
-                :slash-commands-loading="slashCommands.loading.value"
-                :highlighted-slash-command-index="slashCommands.highlightedIndex.value"
-                @update-selected-workspace="context.selectWorkspace"
-                @attach-files="attachFiles"
-                @remove-attachment="context.removeAttachment"
-                @voice-text="appendVoiceText"
-                @voice-error="showVoiceError"
-                @update-selected-model="composer.selectedModel.value = $event"
-                @update-selected-provider="composer.selectedProvider.value = $event"
-                @update-selected-reasoning-effort="composer.selectedReasoningEffort.value = $event"
-                @select-slash-command="selectSlashCommand"
-                @highlight-slash-command="slashCommands.highlightedIndex.value = $event"
-              />
-            </template>
-          </UChatPrompt>
+            <UChatPrompt
+              v-model="input"
+              :error="error || context.contextError.value"
+              @submit="onSubmit"
+              @paste="onPromptPaste"
+              @keydown.down="onPromptArrowDown"
+              @keydown.up="onPromptArrowUp"
+              @keydown.esc="onPromptEscape"
+              @keydown.enter="onPromptAutocompleteEnter"
+            >
+              <template #footer>
+                <ChatPromptFooter
+                  :submit-status="loading ? 'submitted' : 'ready'"
+                  :workspaces="context.workspaces.value"
+                  :selected-workspace="context.selectedWorkspace.value"
+                  :workspace-invalid-signal="workspaceInvalidSignal"
+                  :workspaces-loading="context.workspacesLoading.value"
+                  :attachments="context.attachments.value"
+                  :attachments-loading="context.attachmentsLoading.value"
+                  :models="composer.models.value"
+                  :selected-model="composer.selectedModel.value"
+                  :selected-provider="composer.selectedProvider.value"
+                  :selected-reasoning-effort="composer.selectedReasoningEffort.value"
+                  :capabilities-loading="composer.capabilitiesLoading.value"
+                  :slash-commands="slashCommands.filteredCommands.value"
+                  :slash-commands-open="slashCommands.isOpen.value"
+                  :slash-commands-loading="slashCommands.loading.value"
+                  :highlighted-slash-command-index="slashCommands.highlightedIndex.value"
+                  @update-selected-workspace="context.selectWorkspace"
+                  @attach-files="attachFiles"
+                  @remove-attachment="context.removeAttachment"
+                  @voice-text="appendVoiceText"
+                  @voice-error="showVoiceError"
+                  @update-selected-model="composer.selectedModel.value = $event"
+                  @update-selected-provider="composer.selectedProvider.value = $event"
+                  @update-selected-reasoning-effort="composer.selectedReasoningEffort.value = $event"
+                  @select-slash-command="selectSlashCommand"
+                  @highlight-slash-command="slashCommands.highlightedIndex.value = $event"
+                />
+              </template>
+            </UChatPrompt>
+            <div
+              v-if="isDraggingFiles"
+              class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl border border-dashed border-primary/50 bg-primary/10 text-sm font-medium text-highlighted backdrop-blur-sm"
+            >
+              Drop files to attach
+            </div>
+          </div>
         </div>
       </UContainer>
     </template>

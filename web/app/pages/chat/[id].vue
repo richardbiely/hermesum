@@ -130,7 +130,12 @@ const {
   onPromptAutocompleteEnter,
   appendVoiceText,
   attachFiles,
-  onPromptPaste
+  onPromptPaste,
+  isDraggingFiles,
+  onPromptDragEnter,
+  onPromptDragOver,
+  onPromptDragLeave,
+  onPromptDrop
 } = useChatComposerState({
   sessionId,
   context,
@@ -1070,7 +1075,15 @@ onBeforeUnmount(() => {
               <UButton to="/" color="neutral" variant="soft" icon="i-lucide-square-pen" label="Start a new chat" />
             </div>
 
-            <div v-else class="relative">
+            <div
+              v-else
+              class="relative rounded-xl"
+              :class="isDraggingFiles ? 'ring-2 ring-primary/40 ring-offset-2 ring-offset-default' : undefined"
+              @dragenter="onPromptDragEnter"
+              @dragover="onPromptDragOver"
+              @dragleave="onPromptDragLeave"
+              @drop="onPromptDrop"
+            >
               <div
                 v-if="latestTaskPlan || queuedForSession.length"
                 ref="chatTaskPlanOverlay"
@@ -1132,6 +1145,12 @@ onBeforeUnmount(() => {
                   />
                 </template>
               </UChatPrompt>
+              <div
+                v-if="isDraggingFiles"
+                class="pointer-events-none absolute inset-0 z-20 flex items-center justify-center rounded-xl border border-dashed border-primary/50 bg-primary/10 text-sm font-medium text-highlighted backdrop-blur-sm"
+              >
+                Drop files to attach
+              </div>
             </div>
           </div>
         </UContainer>
