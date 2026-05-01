@@ -62,6 +62,11 @@ let readScrollAnimationFrame: number | undefined
 let previousScrollRestoration: ScrollRestoration | undefined
 let chatFooterResizeObserver: ResizeObserver | undefined
 
+type SendMessageOptions = {
+  clearInput?: boolean
+  includeCurrentAttachments?: boolean
+}
+
 const queuedMessages = useQueuedMessages()
 const queuedForSession = computed(() => queuedMessages.forSession(sessionId.value))
 const steeringQueuedMessageId = ref<string | null>(null)
@@ -615,10 +620,10 @@ function scrollSubmittedMessageToBottom() {
   })
 }
 
-async function sendMessageNow(message: string) {
-  const pendingAttachments = [...context.attachments.value]
+async function sendMessageNow(message: string, options: SendMessageOptions = {}) {
+  const pendingAttachments = options.includeCurrentAttachments === false ? [] : [...context.attachments.value]
   void prepareNotificationSound()
-  input.value = ''
+  if (options.clearInput !== false) input.value = ''
   submitStatus.value = 'submitted'
   const clientMessageId = crypto.randomUUID()
   const userMessage = createLocalMessage('user', message)
@@ -628,7 +633,7 @@ async function sendMessageNow(message: string) {
   if (pendingAttachments.length) userMessage.parts.unshift({ type: 'media', attachments: pendingAttachments })
   messages.value.push(userMessage)
   scrollSubmittedMessageToBottom()
-  context.clearAttachments()
+  if (options.includeCurrentAttachments !== false) context.clearAttachments()
 
   await startRunForLocalMessage(
     userMessage,
@@ -788,7 +793,7 @@ async function steerQueuedMessage(id: string) {
     if (!activeChatRuns.isRunning(sessionId.value)) {
       queuedMessages.remove(id)
       try {
-        await sendMessageNow(queued.text)
+        await sendMessageNow(queued.text, { clearInput: false, includeCurrentAttachments: false })
       } catch {
         queuedMessages.prepend(queued)
       }
@@ -826,7 +831,7 @@ async function sendNextQueuedMessage() {
   if (priority) {
     queuedMessageToSendAfterStop.value = null
     try {
-      await sendMessageNow(priority.text)
+      await sendMessageNow(priority.text, { clearInput: false, includeCurrentAttachments: false })
     } catch {
       queuedMessages.prepend(priority)
     }
@@ -837,7 +842,7 @@ async function sendNextQueuedMessage() {
   if (!queued) return
 
   try {
-    await sendMessageNow(queued.text)
+    await sendMessageNow(queued.text, { clearInput: false, includeCurrentAttachments: false })
   } catch {
     queuedMessages.prepend(queued)
   }
