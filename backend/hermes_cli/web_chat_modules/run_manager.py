@@ -25,10 +25,10 @@ from .models import (
     WebChatPrompt,
     WebChatWorkspaceChanges,
 )
+from .run_events import MESSAGE_ITEMS_FIELD, client_message_id_from_message, system_event_part, task_plan_from_event
 from .sessions import session_provider
 
 RunExecutor = Callable[["RunContext", Callable[[dict[str, Any]], None]], str]
-MESSAGE_ITEMS_FIELD = "codex_message_items"
 
 
 @dataclass
@@ -356,22 +356,7 @@ class RunManager:
         return None
 
     def _message_client_message_id(self, message: dict[str, Any]) -> str | None:
-        items = message.get(MESSAGE_ITEMS_FIELD)
-        if isinstance(items, str):
-            try:
-                items = json.loads(items)
-            except json.JSONDecodeError:
-                return None
-        if not isinstance(items, list):
-            return None
-
-        for item in items:
-            if not isinstance(item, dict) or item.get("type") != "web_chat_client_message":
-                continue
-            value = item.get("clientMessageId")
-            if isinstance(value, str) and value:
-                return value
-        return None
+        return client_message_id_from_message(message)
 
     def _emit(self, active: ActiveRun, event: dict[str, Any]) -> dict[str, Any]:
         self._track_event_duration(active, event)
@@ -389,11 +374,8 @@ class RunManager:
         return emitted_event
 
     def _track_task_plan(self, active: ActiveRun, event: dict[str, Any]) -> None:
-        if event.get("type") != "task_plan.updated":
-            return
-
-        task_plan = event.get("taskPlan")
-        if isinstance(task_plan, dict) and isinstance(task_plan.get("items"), list):
+        task_plan = task_plan_from_event(event)
+        if task_plan is not None:
             active.latest_task_plan = task_plan
 
     def _persist_system_event(self, active: ActiveRun, event: dict[str, Any]) -> Any | None:
@@ -409,62 +391,7 @@ class RunManager:
         )
 
     def _system_event_part(self, active: ActiveRun, event: dict[str, Any]) -> dict[str, Any] | None:
-        event_type = event.get("type")
-        occurred_at = self._iso_now()
-
-        if event_type == "run.steered":
-            return {
-                "eventType": "run_steered",
-                "severity": "info",
-                "title": "Run steered",
-                "description": event.get("text") if isinstance(event.get("text"), str) else None,
-                "occurredAt": occurred_at,
-            }
-        if event_type == "run.stopped":
-            return {
-                "eventType": "run_stopped",
-                "severity": "info",
-                "title": "Run stopped",
-                "description": event.get("message") if isinstance(event.get("message"), str) else "Stopped by user.",
-                "occurredAt": occurred_at,
-            }
-        if event_type == "run.failed":
-            return {
-                "eventType": "run_failed",
-                "severity": "error",
-                "title": "Run failed",
-                "description": event.get("error") if isinstance(event.get("error"), str) else None,
-                "occurredAt": occurred_at,
-            }
-        if event_type == "agent.status" and event.get("kind") == "warn":
-            return {
-                "eventType": "agent_warning",
-                "severity": "warning",
-                "title": "Agent warning",
-                "description": event.get("message") if isinstance(event.get("message"), str) else None,
-                "occurredAt": occurred_at,
-            }
-        if event_type in {"prompt.expired", "prompt.cancelled"}:
-            prompt = event.get("prompt")
-            if not isinstance(prompt, dict):
-                return None
-            prompt_kind = prompt.get("kind")
-            prompt_title = prompt.get("title") if isinstance(prompt.get("title"), str) else None
-            is_approval = prompt_kind == "approval"
-            return {
-                "eventType": "prompt_expired" if event_type == "prompt.expired" else "prompt_cancelled",
-                "severity": "warning",
-                "title": (
-                    "Approval expired" if is_approval and event_type == "prompt.expired"
-                    else "Question expired" if event_type == "prompt.expired"
-                    else "Approval cancelled" if is_approval
-                    else "Question cancelled"
-                ),
-                "description": prompt_title,
-                "occurredAt": occurred_at,
-                "metadata": {"promptId": prompt.get("id")},
-            }
-        return None
+        return system_event_part(event, self._iso_now())
 
     def _track_event_duration(self, active: ActiveRun, event: dict[str, Any]) -> None:
         event_type = event.get("type")
@@ -620,3 +547,4 @@ class RunManager:
             active.context.interrupt_agent = None
             active.context.steer_agent = None
             self._finish(active, active.status)
+

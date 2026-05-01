@@ -1,25 +1,14 @@
 from __future__ import annotations
 
-import subprocess
-
-
-def init_repo(path):
-    path.mkdir()
-    subprocess.run(["git", "-C", str(path), "init"], check=True, capture_output=True)
-    subprocess.run(["git", "-C", str(path), "config", "user.email", "test@example.com"], check=True)
-    subprocess.run(["git", "-C", str(path), "config", "user.name", "Test User"], check=True)
-    (path / "tracked.txt").write_text("one\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(path), "add", "tracked.txt"], check=True)
-    subprocess.run(["git", "-C", str(path), "commit", "-m", "chore: initial"], check=True, capture_output=True)
-    return path
+from web_chat_test_helpers import committed_git_repo, git_command
 
 
 def test_git_status_separates_staged_unstaged_and_untracked(tmp_path):
     from hermes_cli.web_chat_modules.git_commit import git_status
 
-    repo = init_repo(tmp_path / "repo")
+    repo = committed_git_repo(tmp_path)
     (repo / "tracked.txt").write_text("one\nstaged\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
+    git_command(repo, "add", "tracked.txt")
     (repo / "tracked.txt").write_text("one\nstaged\nunstaged\n", encoding="utf-8")
     (repo / "new.txt").write_text("new\n", encoding="utf-8")
 
@@ -37,12 +26,12 @@ def test_git_status_separates_staged_unstaged_and_untracked(tmp_path):
 def test_git_status_hides_staged_add_then_worktree_delete_phantoms(tmp_path):
     from hermes_cli.web_chat_modules.git_commit import git_status
 
-    repo = init_repo(tmp_path / "repo")
+    repo = committed_git_repo(tmp_path)
     (repo / "phantom.txt").write_text("temporary\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(repo), "add", "phantom.txt"], check=True)
+    git_command(repo, "add", "phantom.txt")
     (repo / "phantom.txt").unlink()
 
-    raw_status = subprocess.run(["git", "-C", str(repo), "status", "--porcelain=v1"], check=True, capture_output=True, text=True).stdout
+    raw_status = git_command(repo, "status", "--porcelain=v1", capture_output=True).stdout
     status = git_status(str(repo))
 
     assert "AD phantom.txt" in raw_status
@@ -55,7 +44,7 @@ def test_git_diff_returns_selected_patches_only(tmp_path):
     from hermes_cli.web_chat_modules.git_commit import git_diff
     from hermes_cli.web_chat_modules.models import GitFileSelection
 
-    repo = init_repo(tmp_path / "repo")
+    repo = committed_git_repo(tmp_path)
     (repo / "tracked.txt").write_text("one\ntwo\n", encoding="utf-8")
     (repo / "new.txt").write_text("new\n", encoding="utf-8")
 
@@ -70,7 +59,7 @@ def test_generate_commit_message_asks_hidden_agent_with_project_rules_and_chat_c
     from hermes_cli.web_chat_modules.git_commit import generate_commit_message
     from hermes_cli.web_chat_modules.models import GenerateCommitMessageRequest, GitFileSelection
 
-    repo = init_repo(tmp_path / "repo")
+    repo = committed_git_repo(tmp_path)
     (repo / "AGENTS.md").write_text("Commit messages must follow Conventional Commits.\n", encoding="utf-8")
     (repo / "tracked.txt").write_text("one\nchanged\n", encoding="utf-8")
     captured: dict[str, str] = {}
@@ -96,7 +85,7 @@ def test_generate_commit_message_reports_conventional_rules_without_project_rule
     from hermes_cli.web_chat_modules.git_commit import generate_commit_message
     from hermes_cli.web_chat_modules.models import GenerateCommitMessageRequest, GitFileSelection
 
-    repo = init_repo(tmp_path / "repo")
+    repo = committed_git_repo(tmp_path)
     (repo / "tracked.txt").write_text("one\nchanged\n", encoding="utf-8")
 
     suggestion = generate_commit_message(GenerateCommitMessageRequest(
@@ -113,7 +102,7 @@ def test_generate_commit_message_fails_without_hidden_agent(tmp_path):
     from hermes_cli.web_chat_modules.git_commit import generate_commit_message
     from hermes_cli.web_chat_modules.models import GenerateCommitMessageRequest, GitFileSelection
 
-    repo = init_repo(tmp_path / "repo")
+    repo = committed_git_repo(tmp_path)
     (repo / "tracked.txt").write_text("one\nchanged\n", encoding="utf-8")
 
     try:
@@ -133,7 +122,7 @@ def test_generate_commit_message_fails_when_agent_output_violates_rules(tmp_path
     from hermes_cli.web_chat_modules.git_commit import generate_commit_message
     from hermes_cli.web_chat_modules.models import GenerateCommitMessageRequest, GitFileSelection
 
-    repo = init_repo(tmp_path / "repo")
+    repo = committed_git_repo(tmp_path)
     (repo / "tracked.txt").write_text("one\nchanged\n", encoding="utf-8")
 
     try:
@@ -149,9 +138,10 @@ def test_generate_commit_message_fails_when_agent_output_violates_rules(tmp_path
 
 
 def test_git_routes_expose_status(client, tmp_path):
-    repo = init_repo(tmp_path / "repo")
+    repo = committed_git_repo(tmp_path)
     (repo / "tracked.txt").write_text("one\ntwo\n", encoding="utf-8")
 
     status_response = client.get("/api/web-chat/git/status", params={"workspace": str(repo)})
     assert status_response.status_code == 200
     assert status_response.json()["files"][0]["path"] == "tracked.txt"
+

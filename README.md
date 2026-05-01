@@ -179,6 +179,9 @@ Key frontend areas include chat rendering, queued-message flows, attachments, fi
 ## Development Notes
 
 - Frontend development should normally use `./run-local.sh --dev`, not repeated static builds.
+- Before agentic coding, check [`.hermes/agent-map.md`](.hermes/agent-map.md) and run `node scripts/report-hotspots.mjs` to target the smallest relevant files instead of broad repository scans.
+- Keep `.hermes/agent-map.md`, active `.hermes/plans/*.md`, and this README current when code boundaries, developer workflow, verification commands, or implemented behavior change; do not update docs mechanically for tiny local-only edits.
+- Keep large UI and backend orchestration files thin: move pure helpers to `web/app/utils`, reusable UI state to `web/app/composables`, and backend domain logic to `backend/hermes_cli/web_chat_modules`.
 - Python restarts in watch/dev mode can interrupt in-flight SSE streams.
 - Shared request/response shapes should stay aligned between backend Pydantic models and frontend TypeScript types.
 - When backend payloads change, update backend models, API behavior, frontend types, frontend composables, and tests together.
@@ -197,8 +200,9 @@ Backend verification:
 
 ```bash
 python3 -m py_compile backend/hermes_cli/web_chat.py backend/hermes_cli/web_chat_modules/*.py backend/tests/hermes_cli/test_web_chat*.py backend/tests/hermes_cli/conftest.py backend/tests/hermes_cli/web_chat_test_helpers.py
-pytest backend/tests/hermes_cli/test_web_chat*.py
 ```
+
+Backend pytest should run against the disposable runtime mirror after copying the canonical backend/test files into `.runtime/hermes-agent`; target `backend/tests/hermes_cli/test_web_chat*.py` rather than unrelated upstream runtime tests.
 
 ## Positioning
 

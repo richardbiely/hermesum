@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 import json
-import subprocess
 import threading
 from pathlib import Path
 
-from web_chat_test_helpers import git_repo
+from web_chat_test_helpers import committed_git_repo, git_repo
 
 
 def test_start_run_returns_ids_and_persists_messages(client, monkeypatch, tmp_path):
     import hermes_cli.web_chat as web_chat
 
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
+    repo = git_repo(tmp_path)
     seen = {}
 
     def fake_executor(context, emit):
@@ -177,9 +174,7 @@ def test_task_plan_from_todo_tool_result_normalizes_items():
 def test_stop_run_interrupts_executor_and_persists_stopped_event(client, monkeypatch, tmp_path):
     import hermes_cli.web_chat as web_chat
 
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
+    repo = git_repo(tmp_path)
     executor_started = threading.Event()
     seen = {}
 
@@ -225,16 +220,7 @@ def test_stop_run_interrupts_executor_and_persists_stopped_event(client, monkeyp
 def test_start_run_persists_workspace_changes_with_patch(client, monkeypatch, tmp_path):
     import hermes_cli.web_chat as web_chat
 
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
-    (repo / "tracked.txt").write_text("one\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "-m", "initial"],
-        check=True,
-        capture_output=True,
-    )
+    repo = committed_git_repo(tmp_path)
 
     def fake_executor(context, emit):
         workspace = Path(context.workspace)
@@ -281,16 +267,7 @@ def test_runs_edit_source_workspace_and_persist_history(client, monkeypatch, tmp
 
     worktree_root = tmp_path / "worktrees"
     monkeypatch.setenv("HERMES_WEB_CHAT_WORKTREE_ROOT", str(worktree_root))
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
-    (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "-m", "initial"],
-        check=True,
-        capture_output=True,
-    )
+    repo = committed_git_repo(tmp_path, content="base\n")
     seen = {}
 
     def fake_executor(context, emit):
@@ -332,16 +309,7 @@ def test_delete_session_does_not_remove_source_workspace(client, monkeypatch, tm
     import hermes_cli.web_chat as web_chat
 
     monkeypatch.setenv("HERMES_WEB_CHAT_WORKTREE_ROOT", str(tmp_path / "worktrees"))
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
-    (repo / "tracked.txt").write_text("base\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "-m", "initial"],
-        check=True,
-        capture_output=True,
-    )
+    repo = committed_git_repo(tmp_path, content="base\n")
     seen = {}
 
     def fake_executor(context, emit):
@@ -367,16 +335,7 @@ def test_delete_session_does_not_remove_source_workspace(client, monkeypatch, tm
 def test_start_run_reports_later_edits_when_git_status_is_already_dirty(client, monkeypatch, tmp_path):
     import hermes_cli.web_chat as web_chat
 
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
-    (repo / "tracked.txt").write_text("one\n", encoding="utf-8")
-    subprocess.run(["git", "-C", str(repo), "add", "tracked.txt"], check=True)
-    subprocess.run(
-        ["git", "-C", str(repo), "-c", "user.email=test@example.com", "-c", "user.name=Test", "commit", "-m", "initial"],
-        check=True,
-        capture_output=True,
-    )
+    repo = committed_git_repo(tmp_path)
 
     def first_executor(context, emit):
         workspace = Path(context.workspace)
@@ -481,9 +440,7 @@ def test_resume_run_keeps_existing_workspace_when_omitted(client, monkeypatch, t
     import hermes_cli.web_chat as web_chat
     from hermes_state import SessionDB
 
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    subprocess.run(["git", "-C", str(repo), "init"], check=True, capture_output=True)
+    repo = git_repo(tmp_path)
 
     db = SessionDB()
     db.create_session("existing-session", source="web-chat", model_config={"workspace": str(repo)})
@@ -635,3 +592,5 @@ def test_run_events_can_be_replayed_from_event_id(client, monkeypatch):
     assert "event: run.started" in replayed_body
     assert "event: message.delta" in replayed_body
     assert "event: run.completed" in replayed_body
+
+

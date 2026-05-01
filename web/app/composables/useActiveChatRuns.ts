@@ -1,10 +1,9 @@
 import type { AgentStatusEvent, InteractivePrompt, WebChatTaskPlan, WebChatWorkspaceChanges } from '~/types/web-chat'
 import { reconcileRunSession } from '../utils/activeRunSession'
+import { eventTimestamp, numericMetric, parseRunEventPayload, promptFromRunPayload, statusFromRunPayload, taskPlanFromRunPayload, type RunEventPayload } from '../utils/activeChatRunEvents'
 import { notificationBodyPreview, showRunFinishedDesktopNotification } from '../utils/desktopNotifications'
 import { notificationSoundVariant, playNotificationSound } from '../utils/notificationSound'
 import { createRunEventReplay } from '../utils/runEventReplay'
-
-type RunEventPayload = Record<string, unknown>
 
 type ToolRunPayload = { name?: string, preview?: string, input?: unknown, occurredAt?: string }
 type RunLifecyclePayload = { message?: string, messageId?: string, occurredAt?: string }
@@ -74,10 +73,6 @@ function eventSourceUrl(runId: string) {
   return url.toString()
 }
 
-function parsePayload(event: Event): RunEventPayload {
-  return JSON.parse((event as MessageEvent).data)
-}
-
 function notify(run: TrackedRun, notifySubscriber: (subscriber: ActiveRunHandlers) => void) {
   for (const subscriber of run.subscribers) notifySubscriber(subscriber)
 }
@@ -117,39 +112,6 @@ function runNotificationVariant(sessionId: string) {
     activeVisibleChat: isActiveVisibleChat(sessionId),
     latestContentVisible: isLatestContentVisible()
   })
-}
-
-function promptFromPayload(payload: RunEventPayload) {
-  const prompt = payload.prompt
-  return prompt && typeof prompt === 'object' ? prompt as InteractivePrompt : null
-}
-
-function statusFromPayload(payload: RunEventPayload): AgentStatusEvent | null {
-  if (typeof payload.message !== 'string' || !payload.message) return null
-  return {
-    kind: typeof payload.kind === 'string' ? payload.kind : 'lifecycle',
-    message: payload.message,
-    createdAt: typeof payload.createdAt === 'string' ? payload.createdAt : null
-  }
-}
-
-function taskPlanFromPayload(payload: RunEventPayload): WebChatTaskPlan | null {
-  const taskPlan = payload.taskPlan
-  if (!taskPlan || typeof taskPlan !== 'object') return null
-
-  const items = (taskPlan as { items?: unknown }).items
-  if (!Array.isArray(items)) return null
-
-  return taskPlan as WebChatTaskPlan
-}
-
-function numericMetric(metrics: Record<string, unknown>, key: string) {
-  const value = metrics[key]
-  return typeof value === 'number' && Number.isFinite(value) ? value : null
-}
-
-function eventTimestamp() {
-  return new Date().toISOString()
 }
 
 export function useActiveChatRuns() {
@@ -251,19 +213,19 @@ export function useActiveChatRuns() {
     trackedRuns.set(runId, run)
 
     source.addEventListener('message.delta', (event) => {
-      const payload = parsePayload(event)
+      const payload = parseRunEventPayload(event)
       retargetRunFromEvent(run, payload)
       recordAndNotify(run, 'onDelta', String(payload.content || ''))
     })
 
     source.addEventListener('reasoning.delta', (event) => {
-      const payload = parsePayload(event)
+      const payload = parseRunEventPayload(event)
       retargetRunFromEvent(run, payload)
       recordAndNotify(run, 'onReasoningDelta', String(payload.content || ''))
     })
 
     source.addEventListener('message.completed', (event) => {
-      const payload = parsePayload(event)
+      const payload = parseRunEventPayload(event)
       retargetRunFromEvent(run, payload)
       const notificationVariant = runNotificationVariant(run.sessionId)
       playNotificationSound(notificationVariant)
@@ -289,7 +251,7 @@ export function useActiveChatRuns() {
     })
 
     source.addEventListener('tool.started', (event) => {
-      const payload = parsePayload(event)
+      const payload = parseRunEventPayload(event)
       retargetRunFromEvent(run, payload)
       recordAndNotify(run, 'onToolStarted', {
         name: typeof payload.name === 'string' ? payload.name : undefined,
@@ -300,7 +262,7 @@ export function useActiveChatRuns() {
     })
 
     source.addEventListener('tool.completed', (event) => {
-      const payload = parsePayload(event)
+      const payload = parseRunEventPayload(event)
       retargetRunFromEvent(run, payload)
       recordAndNotify(run, 'onToolCompleted', {
         name: typeof payload.name === 'string' ? payload.name : undefined,
@@ -311,25 +273,25 @@ export function useActiveChatRuns() {
     })
 
     source.addEventListener('task_plan.updated', (event) => {
-      const payload = parsePayload(event)
+      const payload = parseRunEventPayload(event)
       retargetRunFromEvent(run, payload)
-      const taskPlan = taskPlanFromPayload(payload)
+      const taskPlan = taskPlanFromRunPayload(payload)
       if (!taskPlan) return
       recordAndNotify(run, 'onTaskPlanUpdated', taskPlan)
     })
 
     source.addEventListener('agent.status', (event) => {
-      const payload = parsePayload(event)
+      const payload = parseRunEventPayload(event)
       retargetRunFromEvent(run, payload)
-      const status = statusFromPayload(payload)
+      const status = statusFromRunPayload(payload)
       if (!status) return
       recordAndNotify(run, 'onStatus', status)
     })
 
     source.addEventListener('prompt.requested', (event) => {
-      const payload = parsePayload(event)
+      const payload = parseRunEventPayload(event)
       retargetRunFromEvent(run, payload)
-      const prompt = promptFromPayload(payload)
+      const prompt = promptFromRunPayload(payload)
       if (!prompt) return
       if (!isActiveVisibleChat(run.sessionId)) markLocalUnread(run.sessionId)
       playNotificationSound(runNotificationVariant(run.sessionId))
@@ -337,9 +299,9 @@ export function useActiveChatRuns() {
     })
 
     const updatePrompt = (event: Event) => {
-      const payload = parsePayload(event)
+      const payload = parseRunEventPayload(event)
       retargetRunFromEvent(run, payload)
-      const prompt = promptFromPayload(payload)
+      const prompt = promptFromRunPayload(payload)
       if (!prompt) return
       recordAndNotify(run, 'onPromptUpdated', prompt)
     }
@@ -347,17 +309,17 @@ export function useActiveChatRuns() {
     source.addEventListener('prompt.answered', updatePrompt)
     source.addEventListener('prompt.expired', (event) => {
       updatePrompt(event)
-      const prompt = promptFromPayload(parsePayload(event))
+      const prompt = promptFromRunPayload(parseRunEventPayload(event))
       if (prompt) recordAndNotify(run, 'onPromptExpired', prompt)
     })
     source.addEventListener('prompt.cancelled', (event) => {
       updatePrompt(event)
-      const prompt = promptFromPayload(parsePayload(event))
+      const prompt = promptFromRunPayload(parseRunEventPayload(event))
       if (prompt) recordAndNotify(run, 'onPromptCancelled', prompt)
     })
 
     source.addEventListener('run.completed', (event) => {
-      retargetRunFromEvent(run, parsePayload(event))
+      retargetRunFromEvent(run, parseRunEventPayload(event))
       showRunFinishedDesktopNotification({
         sessionId: run.sessionId,
         runId: run.runId,
@@ -369,7 +331,7 @@ export function useActiveChatRuns() {
       finishRun(run)
     })
     source.addEventListener('run.stopped', (event) => {
-      const payload = parsePayload(event)
+      const payload = parseRunEventPayload(event)
       retargetRunFromEvent(run, payload)
       recordAndNotify(run, 'onRunStopped', {
         message: typeof payload.message === 'string' ? payload.message : undefined,
@@ -380,7 +342,7 @@ export function useActiveChatRuns() {
     })
 
     source.addEventListener('run.steered', (event) => {
-      const payload = parsePayload(event)
+      const payload = parseRunEventPayload(event)
       retargetRunFromEvent(run, payload)
       recordAndNotify(run, 'onRunSteered', {
         text: typeof payload.text === 'string' ? payload.text : undefined,
@@ -390,7 +352,7 @@ export function useActiveChatRuns() {
     })
 
     source.addEventListener('run.failed', (event) => {
-      const payload = parsePayload(event)
+      const payload = parseRunEventPayload(event)
       retargetRunFromEvent(run, payload)
       const errorMessage = typeof payload.error === 'string' ? payload.error : 'Run failed'
       recordAndNotify(run, 'onRunFailed', {

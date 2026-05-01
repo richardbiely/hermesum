@@ -25,6 +25,9 @@ Treat this repository as the source of truth for prototype work. Do not edit `$H
 - Prefer project-native and framework-native APIs before adding new dependencies.
 - Do not couple prototype code unnecessarily to local machine paths beyond documented Hermes integration points.
 - Keep `README.md` updated when project structure, setup, development workflow, implemented behavior, or verification commands change.
+- Keep `.hermes/agent-map.md` updated when code boundaries, high-token hotspots, first-read files, or verification entrypoints change.
+- Keep the active `.hermes/plans/*.md` file updated when completing or materially changing a planned refactor slice; avoid creating overlapping plans for the same work.
+- Do not update project docs mechanically after every small edit. Update `AGENTS.md`, `.hermes/agent-map.md`, `README.md`, and active plans only when the change affects future agent navigation, architecture boundaries, setup/workflow, behavior, or verification.
 - Do not add new large catch-all files. When a file starts mixing unrelated concerns or grows past a comfortable review size, split it into cohesive modules before adding more behavior.
 - Keep the source tree clean: do not commit generated `.nuxt`, `.output`, `node_modules`, runtime copies, logs, or disposable verification artifacts.
 

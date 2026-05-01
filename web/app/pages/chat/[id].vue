@@ -5,7 +5,7 @@ import { connectRouteRun } from '../../utils/routeRunConnection'
 import type { GitFileSelection, SessionDetailResponse, WebChatAttachment, WebChatMessage } from '~/types/web-chat'
 import { type QueuedMessage, shouldAutoSendQueuedMessage } from '~/utils/queuedMessages'
 import { latestChangePartKey, messageText } from '~/utils/chatMessages'
-import { filesFromClipboard, writeClipboardText } from '~/utils/clipboard'
+import { writeClipboardText } from '~/utils/clipboard'
 import { mergeOptimisticUserMessages } from '~/utils/optimisticChatMessages'
 import { markLocalMessageFailed, markLocalMessageSending, removeLocalMessage } from '~/utils/failedChatMessages'
 import { isElementVisibleInRoot, nearestScrollableAncestor, scrollElementTreeToBottomAfterRender } from '~/utils/chatInitialScroll'
@@ -15,8 +15,7 @@ import { latestContextUsageTokens } from '~/utils/contextUsage'
 const INITIAL_SESSION_MESSAGE_LIMIT = 60
 const OLDER_SESSION_MESSAGE_LIMIT = 80
 
-const route = useRoute()
-const sessionId = computed(() => String(route.params.id))
+const { route, sessionId } = useChatRouteState()
 const api = useHermesApi()
 const sessionCache = useWebChatSessionCache(api)
 const composer = useChatComposerCapabilities()
@@ -32,7 +31,6 @@ const generatingCommitMessage = ref(false)
 const generatedCommitMessage = ref('')
 const commitMessageModalOpen = ref(false)
 const commitMessageCopied = ref(false)
-const { input } = useChatDraft(sessionId)
 const chatContainer = ref<HTMLElement | null>(null)
 const chatFooterContainer = ref<HTMLElement | null>(null)
 const chatPromptColumn = ref<HTMLElement | null>(null)
@@ -43,7 +41,6 @@ const olderMessagesSentinel = ref<HTMLElement | null>(null)
 const initialScrollSettledSessionId = ref<string | null>(null)
 const lastRenderedMessageCount = ref(0)
 const loadingSkeletonCount = computed(() => loadingChatSkeletonCount(lastRenderedMessageCount.value))
-const slashCommands = useSlashCommands({ input })
 const copiedMessageId = ref<string | null>(null)
 const workspaceInvalidSignal = ref(0)
 const loadingOlderMessages = ref(false)
@@ -123,6 +120,24 @@ const {
   activeChatRuns
 })
 const error = computed(() => streamError.value)
+const {
+  input,
+  slashCommands,
+  selectSlashCommand,
+  onPromptArrowDown,
+  onPromptArrowUp,
+  onPromptEscape,
+  onPromptAutocompleteEnter,
+  appendVoiceText,
+  attachFiles,
+  onPromptPaste
+} = useChatComposerState({
+  sessionId,
+  context,
+  chatStatus,
+  toast,
+  showError
+})
 const latestGitChangePartKey = computed(() => latestChangePartKey(messages.value))
 const chatMessagesStatus = computed(() => chatStatus.value === 'submitted' ? 'streaming' : chatStatus.value)
 const canAutoSendQueuedMessage = computed(() => shouldAutoSendQueuedMessage({
@@ -151,16 +166,6 @@ const promptContextUsage = computed(() => {
     compressionCount: Math.max(0, displayedData.value?.compressionCount || 0),
     estimated: usage.estimated
   }
-})
-const {
-  selectSlashCommand,
-  onPromptArrowDown,
-  onPromptArrowUp,
-  onPromptEscape,
-  onPromptEnter: onPromptAutocompleteEnter
-} = useChatSlashCommandAutocomplete({
-  input,
-  slashCommands
 })
 const {
   editingMessageId,
@@ -271,37 +276,15 @@ watch(
   }
 )
 
-const title = computed(() => {
-  if (isLoadingSession.value) return 'Loading chat…'
-  if (sessionError.value || !hasSession.value) return 'Chat unavailable'
-  const session = displayedData.value?.session
-  return session?.title || session?.preview || 'Chat'
-})
-
-watch(
-  () => displayedData.value?.session,
-  (session) => {
-    if (!session) return
-    activeChatRuns.setSessionTitle(session.id, session.title || session.preview)
-  },
-  { immediate: true }
-)
-
-function pathBaseName(path?: string | null) {
-  if (!path) return null
-  return path.split(/[\\/]+/).filter(Boolean).at(-1) || path
-}
-
-const workspaceStatus = computed(() => {
-  const workspace = displayedData.value?.isolatedWorkspace
-  if (!workspace || workspace.status !== 'active') return null
-
-  const sourceName = pathBaseName(workspace.sourceWorkspace)
-  const branchName = workspace.branchName.split('/').at(-1)
-  return {
-    label: sourceName ? `${sourceName} · worktree` : 'Worktree',
-    detail: `${workspace.worktreePath}${branchName ? `\n${branchName}` : ''}`
-  }
+const {
+  title,
+  workspaceStatus
+} = useChatHeaderState({
+  displayedData,
+  isLoadingSession,
+  sessionError,
+  hasSession,
+  activeChatRuns
 })
 
 async function copyMessage(message: WebChatMessage) {
@@ -324,35 +307,10 @@ async function copyMessage(message: WebChatMessage) {
   }
 }
 
-function appendVoiceText(text: string) {
-  input.value = input.value ? `${input.value} ${text}` : text
-}
-
 function showError(err: unknown, fallback: string) {
   const message = getHermesErrorMessage(err, fallback)
   streamError.value = new Error(message)
   toast.add({ color: 'error', title: fallback, description: message })
-}
-
-async function attachFiles(files: File[]) {
-  try {
-    await context.uploadFiles(files)
-  } catch (err) {
-    showError(err, 'Could not upload attachment.')
-  }
-}
-
-async function onPromptPaste(event: ClipboardEvent) {
-  const files = filesFromClipboard(event)
-  if (!files.length) return
-
-  event.preventDefault()
-  if (chatStatus.value === 'submitted' || chatStatus.value === 'streaming' || context.attachmentsLoading.value) {
-    toast.add({ color: 'warning', title: 'Attachment upload is unavailable right now' })
-    return
-  }
-
-  await attachFiles(files)
 }
 
 function showVoiceError(message: string) {
@@ -1116,23 +1074,16 @@ onBeforeUnmount(() => {
               <div
                 v-if="latestTaskPlan || queuedForSession.length"
                 ref="chatTaskPlanOverlay"
-                class="pointer-events-none absolute inset-x-0 bottom-full z-10 space-y-2"
+                class="pointer-events-none absolute inset-x-0 bottom-full z-10"
               >
-                <div v-if="queuedForSession.length" class="pointer-events-auto">
-                  <ChatQueuedMessages
-                    :messages="queuedForSession"
-                    :steering-id="steeringQueuedMessageId"
-                    :disabled="isLoadingSession || !hasSession"
-                    @edit="editQueuedMessage"
-                    @delete="deleteQueuedMessage"
-                    @steer="steerQueuedMessage"
-                  />
-                </div>
-
-                <ChatTaskPlanCard
-                  v-if="latestTaskPlan"
+                <ChatPromptOverlay
+                  :queued-messages="queuedForSession"
                   :task-plan="latestTaskPlan"
-                  class="pointer-events-auto mx-4 sm:mx-6"
+                  :steering-queued-message-id="steeringQueuedMessageId"
+                  :disabled="isLoadingSession || !hasSession"
+                  @edit-queued-message="editQueuedMessage"
+                  @delete-queued-message="deleteQueuedMessage"
+                  @steer-queued-message="steerQueuedMessage"
                 />
               </div>
 

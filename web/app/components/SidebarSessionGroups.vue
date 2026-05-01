@@ -3,6 +3,7 @@ import type { DropdownMenuItem } from '@nuxt/ui'
 import type { SessionGroup } from '~/utils/sessionGroups'
 import type { WebChatSession, WebChatWorkspace } from '~/types/web-chat'
 import { isSessionUnread } from '~/utils/chatReadReceipts'
+import { displayedGroupSessions, hiddenGroupSessionCount, MAX_COLLAPSED_SESSION_COUNT, sessionTimestampTitle, sessionTitle, sortedGroupSessions } from '~/utils/sidebarSessions'
 
 const props = defineProps<{
   groups: SessionGroup[]
@@ -28,7 +29,6 @@ const emit = defineEmits<{
 
 const OTHER_CHATS_GROUP_ID = '__other__'
 const COLLAPSED_GROUPS_STORAGE_KEY = 'hermes-chat-collapsed-session-groups'
-const MAX_COLLAPSED_SESSION_COUNT = 5
 
 const openMenuSessionId = ref<string | null>(null)
 const draggingWorkspaceId = ref<string | null>(null)
@@ -40,18 +40,8 @@ const collapsedGroupIds = ref(new Set<string>([OTHER_CHATS_GROUP_ID]))
 const expandedSessionGroupIds = ref(new Set<string>())
 let clearDroppedPreviewTimer: number | undefined
 
-function sessionTitle(session: WebChatSession) {
-  return session.title || session.preview || 'Untitled chat'
-}
-
 function sessionTime(updatedAt: string) {
   return formatCompactRelativeTime(updatedAt, props.now)
-}
-
-function sessionTimestampTitle(updatedAt: string) {
-  const timestamp = new Date(updatedAt).getTime()
-
-  return Number.isFinite(timestamp) ? new Date(timestamp).toLocaleString() : undefined
 }
 
 function isActiveSession(session: WebChatSession) {
@@ -168,10 +158,7 @@ function isUnreadSession(session: WebChatSession) {
 }
 
 function sortedSessions(group: SessionGroup) {
-  return [...group.sessions].sort((a, b) => {
-    return Number(b.pinned) - Number(a.pinned)
-      || Number(isUnreadSession(b)) - Number(isUnreadSession(a))
-  })
+  return sortedGroupSessions(group, isUnreadSession)
 }
 
 function isSessionGroupExpanded(group: SessionGroup) {
@@ -179,16 +166,11 @@ function isSessionGroupExpanded(group: SessionGroup) {
 }
 
 function displayedSessions(group: SessionGroup) {
-  const sessions = sortedSessions(group)
-
-  return isSessionGroupExpanded(group)
-    ? sessions
-    : sessions.slice(0, MAX_COLLAPSED_SESSION_COUNT)
+  return displayedGroupSessions(group, isSessionGroupExpanded(group), isUnreadSession)
 }
 
 function hiddenSessionCount(group: SessionGroup) {
-  if (isSessionGroupExpanded(group)) return 0
-  return Math.max(0, group.sessions.length - MAX_COLLAPSED_SESSION_COUNT)
+  return hiddenGroupSessionCount(group, isSessionGroupExpanded(group))
 }
 
 function toggleSessionGroupExpanded(group: SessionGroup) {
