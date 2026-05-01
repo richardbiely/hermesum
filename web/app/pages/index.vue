@@ -116,7 +116,7 @@ async function onSubmit() {
     context.clearAttachments()
     clearDraft()
     playNotificationSound('sent')
-    activeChatRuns.trackRun(result.sessionId, result.runId)
+    activeChatRuns.trackRun(result.sessionId, result.runId, { title: message })
     await router.push({ path: `/chat/${result.sessionId}`, query: { run: result.runId } })
     void refreshSessions?.()
   } catch (err) {

@@ -123,6 +123,12 @@ function sessionTitle(session: WebChatSession) {
   return session.title || session.preview || 'Untitled chat'
 }
 
+function syncActiveRunSessionTitles() {
+  for (const session of sessions.value) {
+    activeChatRuns.setSessionTitle(session.id, sessionTitle(session))
+  }
+}
+
 function workspaceDisplayLabel(path: string | null) {
   if (!path) return null
   return context.workspaces.value.find(workspace => workspace.path === path)?.label || path
@@ -577,6 +583,8 @@ watch(
   () => [route.params.id, sessions.value.map(session => `${session.id}:${session.messageCount}`).join('|')],
   () => syncReadMessageCounts()
 )
+
+watch(sessions, syncActiveRunSessionTitles, { immediate: true })
 
 onMounted(() => {
   installNotificationSoundUnlock()

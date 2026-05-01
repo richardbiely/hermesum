@@ -1,6 +1,6 @@
 import type { AgentStatusEvent, InteractivePrompt, WebChatTaskPlan, WebChatWorkspaceChanges } from '~/types/web-chat'
 import { reconcileRunSession } from '../utils/activeRunSession'
-import { showRunFinishedDesktopNotification } from '../utils/desktopNotifications'
+import { notificationBodyPreview, showRunFinishedDesktopNotification } from '../utils/desktopNotifications'
 import { notificationSoundVariant, playNotificationSound } from '../utils/notificationSound'
 import { createRunEventReplay } from '../utils/runEventReplay'
 
@@ -53,6 +53,8 @@ type TrackedRun = {
   source: EventSource
   subscribers: Set<ActiveRunHandlers>
   replay: ReturnType<typeof createRunEventReplay>
+  responsePreview?: string
+  sessionTitle?: string
 }
 
 const trackedRuns = new Map<string, TrackedRun>()
@@ -204,6 +206,14 @@ export function useActiveChatRuns() {
     return localUnreadSessionIds.value.includes(sessionId)
   }
 
+  function setSessionTitle(sessionId: string, title: string | null | undefined) {
+    const normalized = title?.trim()
+    if (!normalized) return
+    for (const run of trackedRuns.values()) {
+      if (run.sessionId === sessionId) run.sessionTitle = normalized
+    }
+  }
+
   function finishRun(run: TrackedRun) {
     if (finishedRunIds.has(run.runId)) return
 
@@ -219,11 +229,15 @@ export function useActiveChatRuns() {
     void router.push(`/chat/${sessionId}`)
   }
 
-  function trackRun(sessionId: string, runId: string) {
+  function trackRun(sessionId: string, runId: string, options: { title?: string | null } = {}) {
     if (import.meta.server || finishedRunIds.has(runId)) return false
 
     markRunning(sessionId)
-    if (trackedRuns.has(runId)) return true
+    const existingRun = trackedRuns.get(runId)
+    if (existingRun) {
+      if (options.title) setSessionTitle(sessionId, options.title)
+      return true
+    }
 
     const source = new EventSource(eventSourceUrl(runId))
     const run: TrackedRun = {
@@ -231,7 +245,8 @@ export function useActiveChatRuns() {
       sessionId,
       source,
       subscribers: new Set(),
-      replay: createRunEventReplay()
+      replay: createRunEventReplay(),
+      sessionTitle: options.title?.trim() || undefined
     }
     trackedRuns.set(runId, run)
 
@@ -253,6 +268,7 @@ export function useActiveChatRuns() {
       const notificationVariant = runNotificationVariant(run.sessionId)
       playNotificationSound(notificationVariant)
       if (notificationVariant === 'attention') markLocalUnread(run.sessionId)
+      run.responsePreview = notificationBodyPreview(typeof payload.content === 'string' ? payload.content : undefined)
       const metrics = payload.metrics && typeof payload.metrics === 'object' ? payload.metrics as Record<string, unknown> : {}
       recordAndNotify(run, 'onCompleted', {
         content: typeof payload.content === 'string' ? payload.content : undefined,
@@ -346,6 +362,8 @@ export function useActiveChatRuns() {
         sessionId: run.sessionId,
         runId: run.runId,
         status: 'completed',
+        responsePreview: run.responsePreview,
+        chatTitle: run.sessionTitle,
         onClick: openSessionFromNotification
       })
       finishRun(run)
@@ -386,6 +404,7 @@ export function useActiveChatRuns() {
         sessionId: run.sessionId,
         runId: run.runId,
         status: 'failed',
+        chatTitle: run.sessionTitle,
         onClick: openSessionFromNotification
       })
       finishRun(run)
@@ -440,6 +459,7 @@ export function useActiveChatRuns() {
     markLocalUnread,
     clearLocalUnread,
     hasLocalUnread,
+    setSessionTitle,
     trackRun,
     subscribe,
     stop,

@@ -274,8 +274,18 @@ watch(
 const title = computed(() => {
   if (isLoadingSession.value) return 'Loading chat…'
   if (sessionError.value || !hasSession.value) return 'Chat unavailable'
-  return displayedData.value?.session.title || 'Chat'
+  const session = displayedData.value?.session
+  return session?.title || session?.preview || 'Chat'
 })
+
+watch(
+  () => displayedData.value?.session,
+  (session) => {
+    if (!session) return
+    activeChatRuns.setSessionTitle(session.id, session.title || session.preview)
+  },
+  { immediate: true }
+)
 
 function pathBaseName(path?: string | null) {
   if (!path) return null

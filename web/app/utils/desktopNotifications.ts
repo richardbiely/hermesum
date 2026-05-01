@@ -6,10 +6,13 @@ type RunFinishedNotificationOptions = {
   sessionId: string
   runId: string
   status: RunFinishedNotificationStatus
+  responsePreview?: string
+  chatTitle?: string
   onClick?: (sessionId: string) => void
 }
 
 const preferenceKey = 'hermes.desktopNotifications.enabled'
+const maxNotificationBodyLength = 180
 
 function isClient() {
   return typeof window !== 'undefined'
@@ -55,13 +58,20 @@ export function shouldShowDesktopNotification() {
   return document.hidden || !document.hasFocus()
 }
 
+export function notificationBodyPreview(content?: string | null) {
+  const normalized = content?.replace(/\s+/g, ' ').trim()
+  if (!normalized) return undefined
+  if (normalized.length <= maxNotificationBodyLength) return normalized
+  return `${normalized.slice(0, maxNotificationBodyLength - 1).trimEnd()}…`
+}
+
 export function showRunFinishedDesktopNotification(options: RunFinishedNotificationOptions) {
   const api = notificationApi()
   if (!api || !shouldShowDesktopNotification()) return false
 
   const failed = options.status === 'failed'
-  const notification = new api(failed ? 'Hermes run failed' : 'Hermes finished', {
-    body: failed ? 'The chat run failed.' : 'The chat is ready.',
+  const notification = new api(failed ? 'Reply failed' : 'Reply ready', {
+    body: notificationBodyPreview(options.responsePreview) || notificationBodyPreview(options.chatTitle) || 'Untitled chat',
     tag: `hermes-run-${options.runId}`,
     silent: false
   })
