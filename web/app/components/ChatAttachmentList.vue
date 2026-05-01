@@ -101,7 +101,6 @@ onBeforeUnmount(() => {
           color="neutral"
           variant="soft"
           class="max-w-48 cursor-default gap-1"
-          :title="attachment.path"
           @mouseenter="loadImagePreview(attachment)"
         >
           <UIcon name="i-lucide-image" class="size-3.5 shrink-0" />
@@ -154,7 +153,6 @@ onBeforeUnmount(() => {
         color="neutral"
         variant="soft"
         class="max-w-48 cursor-default gap-1"
-        :title="attachment.path"
       >
         <UIcon name="i-lucide-file" class="size-3.5 shrink-0" />
         <span class="truncate">{{ attachment.name }}</span>
