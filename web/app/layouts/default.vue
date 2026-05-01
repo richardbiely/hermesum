@@ -62,6 +62,7 @@ const confirmAction = ref<'duplicate' | 'delete' | null>(null)
 const confirmSession = ref<WebChatSession | null>(null)
 const pendingSessionId = ref<string | null>(null)
 const workspaceModalOpen = ref(false)
+const settingsModalOpen = ref(false)
 const editingWorkspace = ref<WebChatWorkspace | null>(null)
 const workspaceLabel = ref('')
 const workspacePath = ref('')
@@ -660,14 +661,14 @@ provide('requestedSessionId', readonly(requestedSessionId))
       </template>
 
       <template #footer>
-        <div class="w-full pb-1">
+        <div class="flex w-full items-center gap-1 pb-1">
           <USelectMenu
             :model-value="selectedProfile"
             :items="profileOptions"
             value-key="value"
             label-key="label"
             size="xs"
-            class="block w-full max-w-none"
+            class="block min-w-0 flex-1 max-w-none"
             :ui="{
               base: 'w-full max-w-none !justify-start text-left',
               value: 'flex-1 text-left',
@@ -692,6 +693,19 @@ provide('requestedSessionId', readonly(requestedSessionId))
               />
             </template>
           </USelectMenu>
+
+          <UTooltip text="Settings">
+            <UButton
+              aria-label="Settings"
+              icon="i-lucide-settings"
+              color="neutral"
+              variant="ghost"
+              size="xs"
+              square
+              class="shrink-0"
+              @click="settingsModalOpen = true"
+            />
+          </UTooltip>
         </div>
       </template>
     </UDashboardSidebar>
@@ -718,6 +732,8 @@ provide('requestedSessionId', readonly(requestedSessionId))
       @cancel="cancelWorkspaceEdit"
       @delete="deleteWorkspace"
     />
+
+    <SettingsModal v-model:open="settingsModalOpen" />
 
     <ChatRenameModal
       v-model:open="renameModalOpen"

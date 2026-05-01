@@ -1,5 +1,6 @@
 import type { AgentStatusEvent, InteractivePrompt, WebChatTaskPlan, WebChatWorkspaceChanges } from '~/types/web-chat'
 import { reconcileRunSession } from '../utils/activeRunSession'
+import { showRunFinishedDesktopNotification } from '../utils/desktopNotifications'
 import { notificationSoundVariant, playNotificationSound } from '../utils/notificationSound'
 import { createRunEventReplay } from '../utils/runEventReplay'
 
@@ -334,6 +335,11 @@ export function useActiveChatRuns() {
 
     source.addEventListener('run.completed', (event) => {
       retargetRunFromEvent(run, parsePayload(event))
+      showRunFinishedDesktopNotification({
+        sessionId: run.sessionId,
+        runId: run.runId,
+        status: 'completed'
+      })
       finishRun(run)
     })
     source.addEventListener('run.stopped', (event) => {
@@ -368,6 +374,11 @@ export function useActiveChatRuns() {
       })
       const error = new Error(errorMessage)
       notify(run, subscriber => subscriber.onError?.(error))
+      showRunFinishedDesktopNotification({
+        sessionId: run.sessionId,
+        runId: run.runId,
+        status: 'failed'
+      })
       finishRun(run)
     })
 
